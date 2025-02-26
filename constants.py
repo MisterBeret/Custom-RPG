@@ -12,6 +12,7 @@ WHITE = (255, 255, 255)
 GREEN = (0, 255, 0)
 RED = (255, 0, 0)
 GRAY = (200, 200, 200)
+ORANGE = (255, 165, 0)  # Added orange color for HP bars
 
 # Game states
 WORLD_MAP = 0

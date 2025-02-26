@@ -33,7 +33,8 @@ class Entity(pygame.sprite.Sprite):
         # Battle stats
         self.max_hp = 1
         self.hp = 1
-        self.attack = 1
+        self.attack = 2  # Default attack value set to 2
+        self.defense = 1  # New defense stat, default value is 1
         self.spd = 1  # Speed determines turn order
         
     def take_damage(self, amount):

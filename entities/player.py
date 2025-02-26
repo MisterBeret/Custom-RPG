@@ -30,9 +30,11 @@ class Player(Entity):
         # Battle stats
         self.max_hp = 10
         self.hp = 10
-        self.attack = 1
+        self.attack = 2  # Attack set to 2
+        self.defense = 1  # Defense stat set to 1
         self.spd = 5  # Speed determines turn order
         self.defending = False
+        self.defense_multiplier = 1  # New property to track defense multiplier
         
     def update(self, enemies=None):
         """
@@ -81,24 +83,29 @@ class Player(Entity):
         
     def take_damage(self, amount):
         """
-        Apply damage to the player, with reduction if defending.
+        Apply damage to the player, accounting for defense.
         
         Args:
             amount (int): Amount of damage to take
         """
-        # Apply damage reduction if defending
-        if self.defending:
-            amount = max(0, amount - 1)
-            self.defending = False  # Reset defending status
-        
-        # Call the parent class method
+        # Defense multiplier is handled in battle_system calculation now
+        # Just call the parent class method
         super().take_damage(amount)
         
     def defend(self):
         """
-        Enter defensive stance to reduce incoming damage.
+        Enter defensive stance to double defense.
         """
         self.defending = True
+        self.defense_multiplier = 2  # Double defense when defending
+        
+    def end_turn(self):
+        """
+        End the turn and reset temporary stat changes.
+        """
+        if self.defending:
+            self.defending = False
+            self.defense_multiplier = 1  # Reset defense multiplier
         
     def gain_experience(self, amount):
         """
@@ -128,6 +135,10 @@ class Player(Entity):
         self.hp = self.max_hp  # Restore HP on level up
         self.attack += 1
         
+        # Every 2 levels, increase defense
+        if self.level % 2 == 0:
+            self.defense += 1
+            
         # Every 3 levels, increase speed
         if self.level % 3 == 0:
             self.spd += 1

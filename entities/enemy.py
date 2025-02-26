@@ -23,9 +23,12 @@ class Enemy(Entity):
         # Battle stats
         self.max_hp = 3
         self.hp = 3
-        self.attack = 1
+        self.attack = 2  # Attack set to 2
+        self.defense = 1  # Defense stat set to 1
         self.spd = 3  # Speed determines turn order
-        self.xp = 1   # XP awarded to player upon defeat
+        self.xp = 5   # XP awarded to player upon defeat
+        self.defending = False
+        self.defense_multiplier = 1  # New property to track defense multiplier
         
     def update(self):
         """
@@ -33,6 +36,21 @@ class Enemy(Entity):
         """
         # Currently no movement or AI, but can be added here
         pass
+    
+    def defend(self):
+        """
+        Enter defensive stance to double defense.
+        """
+        self.defending = True
+        self.defense_multiplier = 2  # Double defense when defending
+        
+    def end_turn(self):
+        """
+        End the turn and reset temporary stat changes.
+        """
+        if self.defending:
+            self.defending = False
+            self.defense_multiplier = 1  # Reset defense multiplier
         
     @classmethod
     def spawn_random(cls):

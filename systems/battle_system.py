@@ -4,7 +4,8 @@ Battle system for the RPG game.
 import pygame
 from constants import (BLACK, WHITE, GREEN, RED, GRAY, SCREEN_WIDTH, SCREEN_HEIGHT,
                       ATTACK_ANIMATION_DURATION, FLEE_ANIMATION_DURATION,
-                      ACTION_DELAY_DURATION, BATTLE_OPTIONS, MAX_LOG_SIZE)
+                      ACTION_DELAY_DURATION, BATTLE_OPTIONS, MAX_LOG_SIZE,
+                      ORANGE)  # Added ORANGE color
 
 class BattleSystem:
     """
@@ -57,8 +58,8 @@ class BattleSystem:
         self.max_log_size = MAX_LOG_SIZE
         
         # Animation properties
-        self.player_pos = (200, 400)
-        self.enemy_pos = (550, 300)
+        self.player_pos = (550, 400)  # Player now on the right
+        self.enemy_pos = (200, 300)   # Enemy now on the left
         self.player_attacking = False
         self.enemy_attacking = False
         self.player_fleeing = False
@@ -84,6 +85,25 @@ class BattleSystem:
             self.text_speed = 2
         else:  # FAST
             self.text_speed = 4
+    
+    def calculate_damage(self, attacker, defender):
+        """
+        Calculate damage based on attacker's ATK and defender's DEF stats.
+        
+        Args:
+            attacker: The attacking entity
+            defender: The defending entity
+            
+        Returns:
+            int: The calculated damage amount (minimum 0)
+        """
+        # Calculate effective defense based on defense multiplier
+        effective_defense = defender.defense * defender.defense_multiplier
+        
+        # Calculate damage as attacker's attack minus defender's effective defense
+        damage = max(0, attacker.attack - effective_defense)
+        
+        return damage
         
     def process_action(self, action):
         """
@@ -98,8 +118,8 @@ class BattleSystem:
                 self.player_attacking = True
                 self.animation_timer = 0
                 
-                # Process damage but don't set message yet
-                damage = self.player.attack
+                # Calculate damage
+                damage = self.calculate_damage(self.player, self.enemy)
                 self.enemy.take_damage(damage)
                 
                 # Store the message for later display after animation
@@ -111,7 +131,7 @@ class BattleSystem:
                 
             elif action == "DEFEND":
                 self.player.defend()
-                self.set_message("You are defending against the next attack!")
+                self.set_message(f"You are defending! DEF increased to {self.player.defense * self.player.defense_multiplier}!")
                 # Reset the action delay timer
                 self.action_delay = 0
                 
@@ -189,6 +209,9 @@ class BattleSystem:
                     self.battle_over = True
                     self.victory = True
                 else:
+                    # Reset player's defense multiplier at end of turn if defending
+                    self.player.end_turn()
+                    
                     # Switch to enemy's turn
                     self.turn = 1
                     self.enemy_turn_processed = False  # Reset the flag
@@ -209,6 +232,9 @@ class BattleSystem:
                     self.set_message(f"Enemy attacked for {self.pending_damage} damage! You were defeated!")
                     self.battle_over = True
                 else:
+                    # Reset enemy's defense multiplier at end of turn if defending
+                    self.enemy.end_turn()
+                    
                     # Switch back to player turn
                     self.turn = 0
         
@@ -246,16 +272,15 @@ class BattleSystem:
             self.enemy_attacking = True
             self.animation_timer = 0
             
-            # Calculate damage values
-            self.pending_damage = self.enemy.attack
-            self.original_damage = self.pending_damage
+            # Calculate damage values using our new method
+            self.pending_damage = self.calculate_damage(self.enemy, self.player)
+            self.original_damage = self.enemy.attack
             
             # Prepare message based on player's defending status
             if self.player.defending:
-                self.pending_damage = max(0, self.pending_damage - 1)
-                self.pending_message = f"Enemy attacked for {self.original_damage} damage, but you defended! Took {self.pending_damage} damage."
+                self.pending_message = f"Enemy attacked for {self.original_damage} ATK, but you defended with {self.player.defense * self.player.defense_multiplier} DEF! Took {self.pending_damage} damage."
             else:
-                self.pending_message = f"Enemy attacked for {self.pending_damage} damage!"
+                self.pending_message = f"Enemy attacked for {self.original_damage} ATK against your {self.player.defense} DEF! Took {self.pending_damage} damage."
                     
     def draw(self, screen):
         """
@@ -273,22 +298,24 @@ class BattleSystem:
         
         if self.player_attacking:
             # Move player toward enemy during first half, then back
+            # Now player moves left (-) toward enemy
             if self.animation_timer < self.animation_duration / 2:
-                player_offset_x = int(30 * (self.animation_timer / (self.animation_duration / 2)))
+                player_offset_x = int(-30 * (self.animation_timer / (self.animation_duration / 2)))
             else:
-                player_offset_x = int(30 * (1 - (self.animation_timer - self.animation_duration / 2) / (self.animation_duration / 2)))
+                player_offset_x = int(-30 * (1 - (self.animation_timer - self.animation_duration / 2) / (self.animation_duration / 2)))
                 
         elif self.player_fleeing:
-            # Move player off the left side of the screen
-            # Start at normal position, then move increasingly to the left
-            player_offset_x = -int(300 * (self.animation_timer / self.flee_animation_duration))
+            # Move player off the right side of the screen
+            # Start at normal position, then move increasingly to the right
+            player_offset_x = int(300 * (self.animation_timer / self.flee_animation_duration))
         
         if self.enemy_attacking:
             # Move enemy toward player during first half, then back
+            # Now enemy moves right (+) toward player
             if self.animation_timer < self.animation_duration / 2:
-                enemy_offset_x = int(-30 * (self.animation_timer / (self.animation_duration / 2)))
+                enemy_offset_x = int(30 * (self.animation_timer / (self.animation_duration / 2)))
             else:
-                enemy_offset_x = int(-30 * (1 - (self.animation_timer - self.animation_duration / 2) / (self.animation_duration / 2)))
+                enemy_offset_x = int(30 * (1 - (self.animation_timer - self.animation_duration / 2) / (self.animation_duration / 2)))
         
         # Draw player unless player has fled (either during animation or after)
         if not self.fled:
@@ -310,15 +337,11 @@ class BattleSystem:
         """
         # Get the font
         font = pygame.font.SysFont('Arial', 24)
+        small_font = pygame.font.SysFont('Arial', 20)
         
-        # Draw HP and player stats information
-        player_hp_text = font.render(f"Player HP: {self.player.hp}/{self.player.max_hp}", True, WHITE)
-        player_lv_text = font.render(f"LV: {self.player.level}  XP: {self.player.experience}", True, WHITE)
-        enemy_hp_text = font.render(f"Enemy HP: {self.enemy.hp}/{self.enemy.max_hp}", True, WHITE)
-        
-        screen.blit(player_hp_text, (100, 350))
-        screen.blit(player_lv_text, (100, 380))
-        screen.blit(enemy_hp_text, (500, 250))
+        # Draw stat windows at the bottom of the screen
+        self._draw_player_stat_window(screen, font, small_font)
+        self._draw_enemy_stat_window(screen, font, small_font)
         
         # Draw battle message log - a text box showing multiple recent messages
         message_box_height = 30 * len(self.message_log) + 20  # Height based on number of messages
@@ -346,17 +369,32 @@ class BattleSystem:
                 message_text = font.render(message, True, GRAY)  # Older messages in gray
                 screen.blit(message_text, (SCREEN_WIDTH//2 - 290, 80 + i * 30))
         
-        # Draw battle options (only on player's turn when not animating)
+        # Draw battle options in their own box (only on player's turn when not animating)
         if self.turn == 0 and not self.battle_over and not self.player_attacking and not self.enemy_attacking and not self.player_fleeing:
             # Only display battle options when the text is fully displayed
             if self.message_index >= len(self.full_message):
+                # Create options box in the middle bottom
+                options_box_width = 200
+                options_box_height = 120
+                options_box_x = SCREEN_WIDTH // 2 - options_box_width // 2
+                options_box_y = SCREEN_HEIGHT - options_box_height - 75  # Above the stat windows
+                
+                # Draw box background and border
+                pygame.draw.rect(screen, BLACK, (options_box_x, options_box_y, options_box_width, options_box_height))
+                pygame.draw.rect(screen, WHITE, (options_box_x, options_box_y, options_box_width, options_box_height), 2)
+                
+                # Draw "Actions" header
+                actions_text = font.render("Actions", True, WHITE)
+                screen.blit(actions_text, (options_box_x + options_box_width // 2 - actions_text.get_width() // 2, options_box_y + 10))
+                
+                # Draw battle options
                 for i, option in enumerate(self.battle_options):
                     if i == self.selected_option:
                         # Highlight selected option
                         option_text = font.render(f"> {option}", True, WHITE)
                     else:
                         option_text = font.render(f"  {option}", True, GRAY)
-                    screen.blit(option_text, (SCREEN_WIDTH//2 - 50, 450 + i*40))
+                    screen.blit(option_text, (options_box_x + 30, options_box_y + 40 + i * 25))
                 
         # Display continue message if battle is over
         if self.battle_over:
@@ -364,3 +402,89 @@ class BattleSystem:
             if self.message_index >= len(self.full_message):
                 continue_text = font.render("Press ENTER to continue", True, WHITE)
                 screen.blit(continue_text, (SCREEN_WIDTH//2 - continue_text.get_width()//2, 500))
+                
+    def _draw_player_stat_window(self, screen, font, small_font):
+        """
+        Draw the player's stat window at the bottom of the screen.
+        Shows only LV, XP, and HP as requested.
+        
+        Args:
+            screen: The Pygame surface to draw on
+            font: The main font to use
+            small_font: The smaller font for detailed stats
+        """
+        # Create player stat window (right side of bottom)
+        window_width = SCREEN_WIDTH // 2 - 10
+        window_height = 60  # Reduced height since we're showing fewer stats
+        window_x = SCREEN_WIDTH // 2 + 5  # Now on the right side
+        window_y = SCREEN_HEIGHT - window_height - 5
+        
+        # Draw window background and border
+        pygame.draw.rect(screen, BLACK, (window_x, window_y, window_width, window_height))
+        pygame.draw.rect(screen, GREEN, (window_x, window_y, window_width, window_height), 2)
+        
+        # Draw player name and level at top of window
+        player_name = font.render(f"Player  LV: {self.player.level}", True, GREEN)
+        screen.blit(player_name, (window_x + 10, window_y + 5))
+        
+        # Draw HP as a bar with text
+        hp_bar_width = window_width - 110  # Leave room for the text
+        hp_bar_height = 15
+        hp_bar_x = window_x + 100
+        hp_bar_y = window_y + 10
+        
+        # Draw the HP bar background (depleted health shown as gray)
+        pygame.draw.rect(screen, GRAY, (hp_bar_x, hp_bar_y, hp_bar_width, hp_bar_height))
+        
+        # Draw the current HP fill (active health shown as orange)
+        hp_fill_width = int((self.player.hp / self.player.max_hp) * hp_bar_width)
+        pygame.draw.rect(screen, ORANGE, (hp_bar_x, hp_bar_y, hp_fill_width, hp_bar_height))
+        
+        # Draw HP text
+        hp_text = small_font.render(f"HP: {self.player.hp}/{self.player.max_hp}", True, WHITE)
+        screen.blit(hp_text, (window_x + 10, window_y + 10))
+        
+        # Draw XP in bottom of window
+        xp_text = small_font.render(f"XP: {self.player.experience}", True, WHITE)
+        screen.blit(xp_text, (window_x + 10, window_y + 35))
+    
+    def _draw_enemy_stat_window(self, screen, font, small_font):
+        """
+        Draw the enemy's stat window at the bottom left of the screen.
+        Shows only HP as requested.
+        
+        Args:
+            screen: The Pygame surface to draw on
+            font: The main font to use
+            small_font: The smaller font for detailed stats
+        """
+        # Create enemy stat window (left side of bottom)
+        window_width = SCREEN_WIDTH // 2 - 10
+        window_height = 60  # Reduced height since we're showing fewer stats
+        window_x = 5  # Now on the left side
+        window_y = SCREEN_HEIGHT - window_height - 5
+        
+        # Draw window background and border
+        pygame.draw.rect(screen, BLACK, (window_x, window_y, window_width, window_height))
+        pygame.draw.rect(screen, RED, (window_x, window_y, window_width, window_height), 2)
+        
+        # Draw enemy name at top of window
+        enemy_name = font.render("Enemy", True, RED)
+        screen.blit(enemy_name, (window_x + 10, window_y + 5))
+        
+        # Draw HP as a bar with text
+        hp_bar_width = window_width - 110  # Leave room for the text
+        hp_bar_height = 15
+        hp_bar_x = window_x + 100
+        hp_bar_y = window_y + 10
+        
+        # Draw the HP bar background (depleted health shown as gray)
+        pygame.draw.rect(screen, GRAY, (hp_bar_x, hp_bar_y, hp_bar_width, hp_bar_height))
+        
+        # Draw the current HP fill (active health shown as orange)
+        hp_fill_width = int((self.enemy.hp / self.enemy.max_hp) * hp_bar_width)
+        pygame.draw.rect(screen, ORANGE, (hp_bar_x, hp_bar_y, hp_fill_width, hp_bar_height))
+        
+        # Draw HP text
+        hp_text = small_font.render(f"HP: {self.enemy.hp}/{self.enemy.max_hp}", True, WHITE)
+        screen.blit(hp_text, (window_x + 10, window_y + 10))
