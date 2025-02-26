@@ -339,9 +339,9 @@ class BattleSystem:
         font = pygame.font.SysFont('Arial', 24)
         small_font = pygame.font.SysFont('Arial', 20)
         
-        # Draw stat windows at the bottom of the screen
+        # Draw only player stat window at the bottom of the screen
+        # Enemy stats won't be shown by default
         self._draw_player_stat_window(screen, font, small_font)
-        self._draw_enemy_stat_window(screen, font, small_font)
         
         # Draw battle message log - a text box showing multiple recent messages
         message_box_height = 30 * len(self.message_log) + 20  # Height based on number of messages
@@ -373,11 +373,11 @@ class BattleSystem:
         if self.turn == 0 and not self.battle_over and not self.player_attacking and not self.enemy_attacking and not self.player_fleeing:
             # Only display battle options when the text is fully displayed
             if self.message_index >= len(self.full_message):
-                # Create options box in the middle bottom
+                # Create options box on the left bottom (since player window is now on the right)
                 options_box_width = 200
                 options_box_height = 120
-                options_box_x = SCREEN_WIDTH // 2 - options_box_width // 2
-                options_box_y = SCREEN_HEIGHT - options_box_height - 75  # Above the stat windows
+                options_box_x = 20
+                options_box_y = SCREEN_HEIGHT - options_box_height - 5  # At the bottom left
                 
                 # Draw box background and border
                 pygame.draw.rect(screen, BLACK, (options_box_x, options_box_y, options_box_width, options_box_height))
@@ -413,10 +413,10 @@ class BattleSystem:
             font: The main font to use
             small_font: The smaller font for detailed stats
         """
-        # Create player stat window (right side of bottom)
-        window_width = SCREEN_WIDTH // 2 - 10
+        # Create player stat window (centered at bottom since enemy UI is removed)
+        window_width = 300  # More compact width that fits all needed info
         window_height = 60  # Reduced height since we're showing fewer stats
-        window_x = SCREEN_WIDTH // 2 + 5  # Now on the right side
+        window_x = SCREEN_WIDTH - window_width - 20  # Positioned on the right side
         window_y = SCREEN_HEIGHT - window_height - 5
         
         # Draw window background and border
@@ -448,43 +448,4 @@ class BattleSystem:
         xp_text = small_font.render(f"XP: {self.player.experience}", True, WHITE)
         screen.blit(xp_text, (window_x + 10, window_y + 35))
     
-    def _draw_enemy_stat_window(self, screen, font, small_font):
-        """
-        Draw the enemy's stat window at the bottom left of the screen.
-        Shows only HP as requested.
-        
-        Args:
-            screen: The Pygame surface to draw on
-            font: The main font to use
-            small_font: The smaller font for detailed stats
-        """
-        # Create enemy stat window (left side of bottom)
-        window_width = SCREEN_WIDTH // 2 - 10
-        window_height = 60  # Reduced height since we're showing fewer stats
-        window_x = 5  # Now on the left side
-        window_y = SCREEN_HEIGHT - window_height - 5
-        
-        # Draw window background and border
-        pygame.draw.rect(screen, BLACK, (window_x, window_y, window_width, window_height))
-        pygame.draw.rect(screen, RED, (window_x, window_y, window_width, window_height), 2)
-        
-        # Draw enemy name at top of window
-        enemy_name = font.render("Enemy", True, RED)
-        screen.blit(enemy_name, (window_x + 10, window_y + 5))
-        
-        # Draw HP as a bar with text
-        hp_bar_width = window_width - 110  # Leave room for the text
-        hp_bar_height = 15
-        hp_bar_x = window_x + 100
-        hp_bar_y = window_y + 10
-        
-        # Draw the HP bar background (depleted health shown as gray)
-        pygame.draw.rect(screen, GRAY, (hp_bar_x, hp_bar_y, hp_bar_width, hp_bar_height))
-        
-        # Draw the current HP fill (active health shown as orange)
-        hp_fill_width = int((self.enemy.hp / self.enemy.max_hp) * hp_bar_width)
-        pygame.draw.rect(screen, ORANGE, (hp_bar_x, hp_bar_y, hp_fill_width, hp_bar_height))
-        
-        # Draw HP text
-        hp_text = small_font.render(f"HP: {self.enemy.hp}/{self.enemy.max_hp}", True, WHITE)
-        screen.blit(hp_text, (window_x + 10, window_y + 10))
+    # The enemy stat window method has been removed since we're no longer displaying enemy stats by default
