@@ -14,6 +14,9 @@ from entities.enemy import Enemy
 from systems.battle_system import BattleSystem
 from systems.inventory import get_item_effect
 
+# This is a comprehensive fix for the main.py file, focusing on the battle input handling
+# and integrating it properly with our new state management system
+
 def handle_input(event, state_manager, battle_system, player, collided_enemy, 
                 selected_pause_option, selected_settings_option, text_speed_setting,
                 selected_inventory_option, inventory_mode):
@@ -65,6 +68,8 @@ def handle_input(event, state_manager, battle_system, player, collided_enemy,
                                 # End player's turn after using an item
                                 battle_system.turn = 1
                                 battle_system.enemy_turn_processed = False
+                                # Return to battle screen after using item
+                                state_manager.return_to_previous()
                         else:
                             # Use the item (like POTION)
                             success, message = player.use_item(selected_item)
@@ -73,6 +78,8 @@ def handle_input(event, state_manager, battle_system, player, collided_enemy,
                                 # End player's turn after using an item
                                 battle_system.turn = 1
                                 battle_system.enemy_turn_processed = False
+                                # Return to battle screen after using item
+                                state_manager.return_to_previous()
 
     # Handle keyboard input for pause menu
     elif state_manager.is_pause:
@@ -109,8 +116,7 @@ def handle_input(event, state_manager, battle_system, player, collided_enemy,
                     else:  # FAST
                         text_speed_setting = TEXT_SPEED_SLOW
                 elif SETTINGS_OPTIONS[selected_settings_option] == "BACK":
-                    state_manager.change_state(PAUSE)
-                    selected_pause_option = 0  # Reset to first option in pause menu
+                    state_manager.return_to_previous()
         
     # Handle keyboard input for battle
     elif state_manager.is_battle and battle_system:
@@ -137,9 +143,21 @@ def handle_input(event, state_manager, battle_system, player, collided_enemy,
                         # If message is still scrolling, pressing any key will display it immediately
                         battle_system.displayed_message = battle_system.full_message
                         battle_system.message_index = len(battle_system.full_message)
+                        
+                # Check if battle has ended and player pressed ENTER to continue
+                if battle_system.battle_over and battle_system.message_index >= len(battle_system.full_message):
+                    if event.key == pygame.K_RETURN or event.key == pygame.K_SPACE:
+                        # Only remove enemy if player won (not if they fled)
+                        if battle_system.victory:
+                            collided_enemy.kill()
+                        
+                        # Return to world map
+                        state_manager.change_state(WORLD_MAP)
+                        player.reset_position()
+                        battle_system = None
 
     # Return updated values
-    return selected_pause_option, selected_settings_option, selected_inventory_option, inventory_mode
+    return selected_pause_option, selected_settings_option, selected_inventory_option, inventory_mode, battle_system
 
 
 def draw_game(screen, state_manager, battle_system, all_sprites, enemies,
@@ -361,24 +379,26 @@ def main():
             if event.type == pygame.QUIT:
                 running = False
                 
-            # Handle ESC key for pause menu (only when in WORLD_MAP)
+            # Handle ESC key for pause menu
             if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
                 if state_manager.is_world_map:
                     state_manager.change_state(PAUSE)
                 elif state_manager.is_pause:
                     state_manager.return_to_previous()
-                elif state_manager.is_settings:
-                    state_manager.change_state(PAUSE)
-                    selected_pause_option = 0  # Reset to first option in pause menu
-                elif state_manager.is_inventory:
+                elif state_manager.is_settings or state_manager.is_inventory:
+                    # Always return to the previous state (either PAUSE or BATTLE)
                     state_manager.return_to_previous()
             
             # Handle input for all game states
-            selected_pause_option, selected_settings_option, selected_inventory_option, inventory_mode = handle_input(
+            selected_pause_option, selected_settings_option, selected_inventory_option, inventory_mode, new_battle_system = handle_input(
                 event, state_manager, battle_system, player, collided_enemy, 
                 selected_pause_option, selected_settings_option, text_speed_setting,
                 selected_inventory_option, inventory_mode
             )
+            
+            # Update battle_system if changed (e.g. ended or modified)
+            if new_battle_system is not None:
+                battle_system = new_battle_system
         
         # Update game logic based on current state
         if state_manager.is_world_map:
@@ -397,7 +417,8 @@ def main():
             
             # Check if battle is over and return to world map
             if battle_system.battle_over and battle_system.message_index >= len(battle_system.full_message):
-                if pygame.key.get_pressed()[pygame.K_RETURN]:
+                keys = pygame.key.get_pressed()
+                if keys[pygame.K_RETURN]:
                     # Only remove enemy if player won (not if they fled)
                     if battle_system.victory:
                         collided_enemy.kill()
