@@ -17,6 +17,10 @@ from systems.inventory import get_item_effect
 # This is a comprehensive fix for the main.py file, focusing on the battle input handling
 # and integrating it properly with our new state management system
 
+"""
+Updated handle_input function in main.py to support spell casting.
+"""
+
 def handle_input(event, state_manager, battle_system, player, collided_enemy, 
                 selected_pause_option, selected_settings_option, text_speed_setting,
                 selected_inventory_option, inventory_mode):
@@ -135,7 +139,37 @@ def handle_input(event, state_manager, battle_system, player, collided_enemy,
     elif state_manager.is_battle and battle_system:
         if not battle_system.battle_over:
             if event.type == pygame.KEYDOWN:
-                if battle_system.turn == 0:  # Player's turn
+                # Handle spell menu navigation if active
+                if battle_system.in_spell_menu:
+                    # Get spells list
+                    spell_options = player.spellbook.get_spell_names() + ["BACK"]
+                    
+                    if event.key == pygame.K_UP:
+                        battle_system.selected_spell_option = (battle_system.selected_spell_option - 1) % len(spell_options)
+                    elif event.key == pygame.K_DOWN:
+                        battle_system.selected_spell_option = (battle_system.selected_spell_option + 1) % len(spell_options)
+                    elif event.key == pygame.K_RETURN or event.key == pygame.K_SPACE:
+                        selected_spell = spell_options[battle_system.selected_spell_option]
+                        
+                        if selected_spell == "BACK":
+                            # Return to main battle menu
+                            battle_system.in_spell_menu = False
+                        else:
+                            # Try to cast the spell
+                            success = battle_system.cast_spell(selected_spell)
+                            if not success:
+                                # If cast failed, stay in spell menu (message already set)
+                                pass
+                            else:
+                                # Return to battle screen after successful cast
+                                battle_system.in_spell_menu = False
+                    
+                    # Also exit spell menu with ESCAPE key
+                    elif event.key == pygame.K_ESCAPE:
+                        battle_system.in_spell_menu = False
+                
+                # Handle regular battle options when not in spell menu
+                elif battle_system.turn == 0:  # Player's turn
                     # Only accept inputs when text is fully displayed
                     if battle_system.message_index >= len(battle_system.full_message):
                         if event.key == pygame.K_UP:
@@ -145,8 +179,12 @@ def handle_input(event, state_manager, battle_system, player, collided_enemy,
                         elif event.key == pygame.K_RETURN or event.key == pygame.K_SPACE:
                             selected_action = battle_system.battle_options[battle_system.selected_option]
                             
+                            # Handle the MAGIC action
+                            if selected_action == "MAGIC":
+                                battle_system.in_spell_menu = True
+                                battle_system.selected_spell_option = 0
                             # Handle the ITEMS action
-                            if selected_action == "ITEMS":
+                            elif selected_action == "ITEMS":
                                 state_manager.change_state(INVENTORY)
                                 selected_inventory_option = 0  # Reset selection
                                 inventory_mode = "battle"  # Set mode for context

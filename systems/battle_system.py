@@ -5,8 +5,9 @@ import pygame
 import random
 from constants import (BLACK, WHITE, GREEN, RED, GRAY, SCREEN_WIDTH, SCREEN_HEIGHT,
                       ATTACK_ANIMATION_DURATION, FLEE_ANIMATION_DURATION,
-                      ACTION_DELAY_DURATION, BATTLE_OPTIONS, MAX_LOG_SIZE,
-                      ORANGE, BLUE, DARK_BLUE)  # Added ORANGE color
+                      ACTION_DELAY_DURATION, SPELL_ANIMATION_DURATION, 
+                      BATTLE_OPTIONS, MAX_LOG_SIZE,
+                      ORANGE, BLUE, DARK_BLUE, PURPLE)
 
 class BattleSystem:
     """
@@ -73,6 +74,13 @@ class BattleSystem:
         self.pending_damage = 0
         self.original_damage = 0
         self.pending_message = ""
+        
+        # Magic system additions
+        self.in_spell_menu = False
+        self.selected_spell_option = 0
+        self.player_casting = False
+        self.spell_animation_duration = SPELL_ANIMATION_DURATION
+        self.current_spell = None
         
     def set_text_speed(self, text_speed_setting):
         """
@@ -169,7 +177,7 @@ class BattleSystem:
         Process a player action.
         
         Args:
-            action: The action to process ("ATTACK", "DEFEND", or "RUN")
+            action: The action to process ("ATTACK", "DEFEND", "MAGIC", "ITEMS", or "RUN")
         """
         if self.turn == 0 and not self.action_processing:  # Player's turn and not already processing
             self.action_processing = True
@@ -205,11 +213,81 @@ class BattleSystem:
                 #Make sure we're setting action_processing to True
                 self.action_processing = True
                 
+            elif action == "MAGIC":
+                # Open magic menu
+                self.in_spell_menu = True
+                self.selected_spell_option = 0
+                self.set_message("Select a spell to cast:")
+                self.action_processing = False  # Allow spell selection
+                
             elif action == "RUN":
                 # Start flee animation
                 self.player_fleeing = True
                 self.animation_timer = 0
                 self.set_message("You tried to flee!")
+
+    def cast_spell(self, spell_name):
+        """
+        Process casting a spell.
+        
+        Args:
+            spell_name: The name of the spell to cast
+        """
+        if self.turn == 0 and not self.action_processing:
+            # Get the spell data
+            spell = self.player.spellbook.get_spell(spell_name)
+            if not spell:
+                self.set_message(f"You don't know the spell {spell_name}!")
+                return False
+                
+            # Check if player has enough MP
+            if self.player.mp < spell.mp_cost:
+                self.set_message(f"Not enough MP to cast {spell_name}!")
+                return False
+                
+            # Set the current spell for animation
+            self.current_spell = spell
+            self.action_processing = True
+                
+            # Start spell casting animation
+            self.player_casting = True
+            self.animation_timer = 0
+                
+            # Use the MP
+            self.player.use_mp(spell.mp_cost)
+                
+            # Handle spell effects
+            if spell.effect_type == "damage":
+                # Calculate magic damage
+                damage = self.calculate_magic_damage(self.player, self.enemy, spell.base_power)
+                self.enemy.take_damage(damage)
+                    
+                # Store the message for later display after animation
+                if self.enemy.is_defeated():
+                    self.pending_message = f"Cast {spell_name}! Dealt {damage} magic damage! Enemy defeated!"
+                    self.pending_victory = True
+                else:
+                    self.pending_message = f"Cast {spell_name}! Dealt {damage} magic damage!"
+                
+            elif spell.effect_type == "healing":
+                # For healing spells, add intelligence to the base power
+                healing_amount = spell.base_power + self.player.intelligence
+                    
+                # Store original HP to calculate actual healing
+                original_hp = self.player.hp
+                    
+                # Apply healing (capped at max_hp)
+                self.player.hp = min(self.player.hp + healing_amount, self.player.max_hp)
+                    
+                # Calculate actual healing done
+                actual_healing = self.player.hp - original_hp
+                    
+                # Set pending message
+                self.pending_message = f"Cast {spell_name}! Restored {actual_healing} HP!"
+                
+            return True
+        
+        return False
 
     def set_message(self, message):
         """
@@ -287,7 +365,40 @@ class BattleSystem:
                     self.enemy_turn_processed = False  # Reset the flag
                         
                 self.action_processing = False
-
+        
+        # Handle player spell casting animation
+        elif self.player_casting:
+            self.animation_timer += 1
+            if self.animation_timer >= self.spell_animation_duration:
+                self.player_casting = False
+                self.animation_timer = 0
+                self.current_spell = None
+                
+                # Now that animation is complete, display the message
+                self.set_message(self.pending_message)
+                
+                # If enemy was defeated, end battle and award XP
+                if self.pending_victory:
+                    # Award XP to player
+                    xp_gained = self.enemy.xp
+                    self.player.gain_experience(xp_gained)
+                    
+                    # Add XP message to the log
+                    self.message_log.append(f"You gained {xp_gained} XP!")
+                    if len(self.message_log) > self.max_log_size:
+                        self.message_log.pop(0)
+                    
+                    self.battle_over = True
+                    self.victory = True
+                else:
+                    # Reset player's defense multiplier at end of turn if defending
+                    self.player.end_turn()
+                    
+                    # Switch to enemy's turn
+                    self.turn = 1
+                    self.enemy_turn_processed = False
+                
+                self.action_processing = False
         
         # Handle enemy attack animation
         elif self.enemy_attacking:
@@ -409,6 +520,14 @@ class BattleSystem:
             # Start at normal position, then move increasingly to the right
             player_offset_x = int(300 * (self.animation_timer / self.flee_animation_duration))
         
+        elif self.player_casting:
+            # For spell casting, add a subtle effect (slight movement or glowing effect)
+            # Just slight movement for now
+            if self.animation_timer < self.spell_animation_duration / 2:
+                player_offset_x = int(-10 * (self.animation_timer / (self.spell_animation_duration / 2)))
+            else:
+                player_offset_x = int(-10 * (1 - (self.animation_timer - self.spell_animation_duration / 2) / (self.spell_animation_duration / 2)))
+        
         if self.enemy_attacking:
             # Move enemy toward player during first half, then back
             # Now enemy moves right (+) toward player
@@ -421,10 +540,29 @@ class BattleSystem:
         if not self.fled:
             # During fleeing animation, only draw player until they're mostly off-screen
             if not self.player_fleeing or player_offset_x > -200:
-                pygame.draw.rect(screen, GREEN, (self.player_pos[0] + player_offset_x, self.player_pos[1], 50, 75))  # Player
+                # Draw magic effect if casting
+                if self.player_casting and self.current_spell and self.current_spell.effect_type == "damage":
+                    # Draw spell projectile traveling toward enemy
+                    spell_progress = self.animation_timer / self.spell_animation_duration
+                    spell_x = self.player_pos[0] - 300 * spell_progress
+                    spell_y = self.player_pos[1] + 35
+                    pygame.draw.circle(screen, RED, (int(spell_x), int(spell_y)), 10)
+                
+                # Draw player character
+                pygame.draw.rect(screen, GREEN, (self.player_pos[0] + player_offset_x, self.player_pos[1], 50, 75))
+                
+                # Draw healing effect if applicable
+                if self.player_casting and self.current_spell and self.current_spell.effect_type == "healing":
+                    # Draw healing particles around player
+                    for i in range(5):
+                        angle = self.animation_timer * 0.1 + i * (2 * 3.14159 / 5)
+                        radius = 20 + 10 * (self.animation_timer / self.spell_animation_duration)
+                        heal_x = self.player_pos[0] + 25 + int(radius * pygame.math.Vector2(1, 0).rotate(angle * 57.3).x)
+                        heal_y = self.player_pos[1] + 35 + int(radius * pygame.math.Vector2(1, 0).rotate(angle * 57.3).y)
+                        pygame.draw.circle(screen, BLUE, (heal_x, heal_y), 5)
         
         # Draw enemy
-        pygame.draw.rect(screen, RED, (self.enemy_pos[0] + enemy_offset_x, self.enemy_pos[1], 50, 50))    # Enemy
+        pygame.draw.rect(screen, RED, (self.enemy_pos[0] + enemy_offset_x, self.enemy_pos[1], 50, 50))
         
         self._draw_battle_ui(screen)
         
@@ -469,39 +607,125 @@ class BattleSystem:
                 message_text = font.render(message, True, GRAY)  # Older messages in gray
                 screen.blit(message_text, (SCREEN_WIDTH//2 - 290, 80 + i * 30))
         
-        # Draw battle options in their own box (only on player's turn when not animating)
-        if self.turn == 0 and not self.battle_over and not self.player_attacking and not self.enemy_attacking and not self.player_fleeing and self.action_delay == 0:
-            # Only display battle options when the text is fully displayed
+        # Draw battle options or spell menu
+        if self.turn == 0 and not self.battle_over and not self.player_attacking and not self.enemy_attacking and not self.player_fleeing and not self.player_casting and self.action_delay == 0:
+            # Only display UI when the text is fully displayed
             if self.message_index >= len(self.full_message):
-                # Create options box on the left bottom (since player window is now on the right)
-                options_box_width = 200
-                options_box_height = 120
-                options_box_x = 20
-                options_box_y = SCREEN_HEIGHT - options_box_height - 5  # At the bottom left
-                
-                # Draw box background and border
-                pygame.draw.rect(screen, BLACK, (options_box_x, options_box_y, options_box_width, options_box_height))
-                pygame.draw.rect(screen, WHITE, (options_box_x, options_box_y, options_box_width, options_box_height), 2)
-                
-                # Draw "Actions" header
-                actions_text = font.render("Actions", True, WHITE)
-                screen.blit(actions_text, (options_box_x + options_box_width // 2 - actions_text.get_width() // 2, options_box_y + 10))
-                
-                # Draw battle options
-                for i, option in enumerate(self.battle_options):
-                    if i == self.selected_option:
-                        # Highlight selected option
-                        option_text = font.render(f"> {option}", True, WHITE)
-                    else:
-                        option_text = font.render(f"  {option}", True, GRAY)
-                    screen.blit(option_text, (options_box_x + 30, options_box_y + 40 + i * 25))
-                
+                if self.in_spell_menu:
+                    self._draw_spell_menu(screen, font, small_font)
+                else:
+                    self._draw_battle_options(screen, font)
+                    
         # Display continue message if battle is over
         if self.battle_over:
             # Only display the continue message when the text is fully displayed
             if self.message_index >= len(self.full_message):
                 continue_text = font.render("Press ENTER to continue", True, WHITE)
                 screen.blit(continue_text, (SCREEN_WIDTH//2 - continue_text.get_width()//2, 500))
+    
+    def _draw_spell_menu(self, screen, font, small_font):
+        """
+        Draw the spell selection menu.
+        
+        Args:
+            screen: The pygame surface to draw on
+            font: The main font to use
+            small_font: The smaller font for details
+        """
+        # Create spell menu box
+        spell_box_width = 250
+        spell_box_height = 150  # Taller to fit more spells
+        spell_box_x = 20
+        spell_box_y = SCREEN_HEIGHT - spell_box_height - 5
+        
+        # Draw box background and border
+        pygame.draw.rect(screen, BLACK, (spell_box_x, spell_box_y, spell_box_width, spell_box_height))
+        pygame.draw.rect(screen, PURPLE, (spell_box_x, spell_box_y, spell_box_width, spell_box_height), 2)
+        
+        # Draw "Magic" header
+        magic_text = font.render("Magic", True, PURPLE)
+        screen.blit(magic_text, (spell_box_x + spell_box_width // 2 - magic_text.get_width() // 2, spell_box_y + 10))
+        
+        # Get spell list from player's spellbook
+        spell_names = self.player.spellbook.get_spell_names()
+        # Add "BACK" option at the end
+        options = spell_names + ["BACK"]
+        
+        # Draw each spell with MP cost
+        for i, spell_name in enumerate(options):
+            if spell_name == "BACK":
+                # Draw BACK option
+                if i == self.selected_spell_option:
+                    option_text = font.render(f"> {spell_name}", True, WHITE)
+                else:
+                    option_text = font.render(f"  {spell_name}", True, GRAY)
+                screen.blit(option_text, (spell_box_x + 30, spell_box_y + 40 + i * 25))
+            else:
+                # Get the spell data
+                spell = self.player.spellbook.get_spell(spell_name)
+                
+                # Determine text color based on whether player has enough MP
+                has_mp = self.player.mp >= spell.mp_cost
+                
+                if i == self.selected_spell_option:
+                    # Selected spell
+                    if has_mp:
+                        name_color = WHITE  # Can cast
+                    else:
+                        name_color = RED    # Can't cast (not enough MP)
+                    option_text = font.render(f"> {spell_name}", True, name_color)
+                else:
+                    # Unselected spell
+                    if has_mp:
+                        name_color = GRAY   # Can cast
+                    else:
+                        name_color = RED    # Can't cast (not enough MP)
+                    option_text = font.render(f"  {spell_name}", True, name_color)
+                
+                # Draw spell name
+                screen.blit(option_text, (spell_box_x + 30, spell_box_y + 40 + i * 25))
+                
+                # Draw MP cost
+                mp_text = small_font.render(f"{spell.mp_cost} MP", True, BLUE)
+                screen.blit(mp_text, (spell_box_x + 150, spell_box_y + 40 + i * 25))
+        
+        # Draw spell description for selected spell
+        if self.selected_spell_option < len(spell_names):
+            spell = self.player.spellbook.get_spell(options[self.selected_spell_option])
+            if spell:
+                desc_text = small_font.render(spell.description, True, WHITE)
+                screen.blit(desc_text, (spell_box_x + 30, spell_box_y + 40 + len(options) * 25))
+                
+    def _draw_battle_options(self, screen, font):
+        """
+        Draw the main battle options menu.
+        
+        Args:
+            screen: The pygame surface to draw on
+            font: The font to use
+        """
+        # Create options box on the left bottom
+        options_box_width = 200
+        options_box_height = 120
+        options_box_x = 20
+        options_box_y = SCREEN_HEIGHT - options_box_height - 5  # At the bottom left
+        
+        # Draw box background and border
+        pygame.draw.rect(screen, BLACK, (options_box_x, options_box_y, options_box_width, options_box_height))
+        pygame.draw.rect(screen, WHITE, (options_box_x, options_box_y, options_box_width, options_box_height), 2)
+        
+        # Draw "Actions" header
+        actions_text = font.render("Actions", True, WHITE)
+        screen.blit(actions_text, (options_box_x + options_box_width // 2 - actions_text.get_width() // 2, options_box_y + 10))
+        
+        # Draw battle options
+        for i, option in enumerate(self.battle_options):
+            if i == self.selected_option:
+                # Highlight selected option
+                option_text = font.render(f"> {option}", True, WHITE)
+            else:
+                option_text = font.render(f"  {option}", True, GRAY)
+            screen.blit(option_text, (options_box_x + 30, options_box_y + 40 + i * 20))
                 
     def _draw_player_stat_window(self, screen, font, small_font):
         """

@@ -4,7 +4,8 @@ Player class for the RPG game.
 import pygame
 from entities.entity import Entity
 from constants import GREEN, SCREEN_WIDTH, SCREEN_HEIGHT
-from systems.inventory import Inventory  # Import the inventory system
+from systems.inventory import Inventory
+from systems.spell_system import SpellBook  # Import the new spell system
 
 class Player(Entity):
     """
@@ -43,6 +44,9 @@ class Player(Entity):
         
         # Inventory
         self.inventory = Inventory()
+        
+        # Spell book
+        self.spellbook = SpellBook()
         
     def update(self, enemies=None):
         """
@@ -112,6 +116,63 @@ class Player(Entity):
         """
         if self.defending:
             self.defending = False
+    
+    def cast_spell(self, spell_name, target=None):
+        """
+        Cast a spell from the spellbook.
+        
+        Args:
+            spell_name: The name of the spell to cast
+            target: The target of the spell effect (if applicable)
+            
+        Returns:
+            tuple: (bool, str) - Success flag and result message
+        """
+        # Get the spell data
+        spell = self.spellbook.get_spell(spell_name)
+        if not spell:
+            return False, f"You don't know the spell {spell_name}!"
+        
+        # Check if player has enough MP
+        if self.mp < spell.mp_cost:
+            return False, f"Not enough MP to cast {spell_name}!"
+        
+        # Use the MP
+        if not self.use_mp(spell.mp_cost):
+            return False, f"Failed to use MP for {spell_name}!"
+        
+        # Apply the spell effect based on type
+        if spell.effect_type == "damage" and target:
+            # Calculate magic damage using INT and spell power
+            from systems.battle_system import BattleSystem
+            battle_system = BattleSystem(self, target, "FAST")  # Temporary instance just for calculation
+            damage = battle_system.calculate_magic_damage(self, target, spell.base_power)
+            
+            # Apply damage to target
+            target.take_damage(damage)
+            
+            # Return result
+            if target.is_defeated():
+                return True, f"Cast {spell_name}! Dealt {damage} magic damage! Enemy defeated!"
+            else:
+                return True, f"Cast {spell_name}! Dealt {damage} magic damage!"
+                
+        elif spell.effect_type == "healing":
+            # For healing spells, add intelligence to the base power
+            healing_amount = spell.base_power + self.intelligence
+            
+            # Store original HP to calculate actual healing
+            original_hp = self.hp
+            
+            # Apply healing (capped at max_hp)
+            self.hp = min(self.hp + healing_amount, self.max_hp)
+            
+            # Calculate actual healing done
+            actual_healing = self.hp - original_hp
+            
+            return True, f"Cast {spell_name}! Restored {actual_healing} HP!"
+        
+        return False, f"Couldn't cast {spell_name} effectively."
         
     def gain_experience(self, amount):
         """
