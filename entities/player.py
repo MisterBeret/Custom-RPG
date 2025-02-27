@@ -33,10 +33,11 @@ class Player(Entity):
         self.hp = 10
         self.max_mp = 5  # Player starts with 5 MP
         self.mp = 5      # Current MP
-        self.intelligence = 2  # Intelligence set to 2 for magic damage
-        self.resilience = 1    # Resilience set to 1 to reduce magic damage
         self.attack = 2  # Attack set to 2
         self.defense = 1  # Defense stat set to 1
+        self.intelligence = 2  # Intelligence set to 2 for magic damage
+        self.resilience = 1    # Resilience set to 1 to reduce magic damage
+        self.acc = 2  # New accuracy stat
         self.spd = 5  # Speed determines turn order
         self.defending = False
         self.defense_multiplier = 1  # New property to track defense multiplier
@@ -153,6 +154,10 @@ class Player(Entity):
         # Every 4 levels, increase resilience
         if self.level % 4 == 0:
             self.resilience += 1
+
+        # Every 4 levels, increase accuracy
+        if self.level % 4 == 0:
+            self.acc += 1
             
         # Every 3 levels, increase speed
         if self.level % 3 == 0:
@@ -188,6 +193,6 @@ class Player(Entity):
             return True, f"Used {item_name}! Restored {healed} HP."
             
         elif item.effect_type == "scan" and target:
-            return True, f"Used {item_name}! {target.__class__.__name__} stats:\nHP: {target.hp}/{target.max_hp}\nATK: {target.attack}\nDEF: {target.defense}\nSPD: {target.spd}"
+            return True, f"Used {item_name}! {target.__class__.__name__} stats:\nHP: {target.hp}/{target.max_hp}\nATK: {target.attack}\nDEF: {target.defense}\nSPD: {target.spd}\nACC: {target.acc}"
             
         return False, f"Couldn't use {item_name} effectively."

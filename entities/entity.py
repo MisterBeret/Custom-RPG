@@ -31,15 +31,16 @@ class Entity(pygame.sprite.Sprite):
         self.rect.y = y
         
         # Battle stats
-        self.max_hp = 1
-        self.hp = 1
-        self.max_mp = 0  # Maximum magic points
-        self.mp = 0      # Current magic points
-        self.intelligence = 0  # Intelligence determines magic damage
-        self.resilience = 1    # Resilience reduces incoming magic damage
-        self.attack = 2  # Default attack value set to 2
-        self.defense = 1  # New defense stat, default value is 1
-        self.spd = 1  # Speed determines turn order
+        self.max_hp = 1 # Maximum Health Points
+        self.hp = 1 # Current Health Points
+        self.max_mp = 0  # Maximum Magic Points
+        self.mp = 0      # Current Magic Points
+        self.attack = 2  # ATK determines damage of physical attacks, default value is 2
+        self.defense = 1  # DEf reduces incoming physical damage
+        self.intelligence = 0  # INT determines magic damage
+        self.resilience = 1    # RES reduces incoming magic damage
+        self.acc = 2  # ACC determines chance to land hit
+        self.spd = 1  # SPD determines turn order and chance to dodge incoming hits
         
     def take_damage(self, amount):
         """

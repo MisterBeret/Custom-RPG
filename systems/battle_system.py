@@ -2,6 +2,7 @@
 Battle system for the RPG game.
 """
 import pygame
+import random
 from constants import (BLACK, WHITE, GREEN, RED, GRAY, SCREEN_WIDTH, SCREEN_HEIGHT,
                       ATTACK_ANIMATION_DURATION, FLEE_ANIMATION_DURATION,
                       ACTION_DELAY_DURATION, BATTLE_OPTIONS, MAX_LOG_SIZE,
@@ -87,6 +88,32 @@ class BattleSystem:
         else:  # FAST
             self.text_speed = 4
     
+    def calculate_hit_chance(self, attacker, defender):
+        """
+        Calculate the chance to hit based on attacker's ACC and defender's SPD.
+        
+        Args:
+            attacker: The attacking entity
+            defender: The defending entity
+            
+        Returns:
+            float: The chance to hit as a decimal between 0 and 1
+        """
+        # Base formula: When ACC equals SPD, hit chance is 0.9 (90%)
+        # For each point ACC is higher than SPD, hit chance increases by 0.05
+        # For each point ACC is lower than SPD, hit chance decreases by 0.2
+        
+        if attacker.acc >= defender.spd:
+            # High accuracy case - 90% base hit chance, +5% per point above opponent's speed
+            hit_chance = 0.9 + (attacker.acc - defender.spd) * 0.05
+            # Cap at 99% hit chance (always a small chance to miss)
+            return min(0.99, hit_chance)
+        else:
+            # Low accuracy case - lose 20% hit chance per point below opponent's speed
+            hit_chance = 0.9 - (defender.spd - attacker.acc) * 0.2
+            # Minimum 10% hit chance (always a small chance to hit)
+            return max(0.1, hit_chance)
+    
     def calculate_damage(self, attacker, defender):
         """
         Calculate damage based on attacker's ATK and defender's DEF stats.
@@ -137,16 +164,24 @@ class BattleSystem:
                 self.player_attacking = True
                 self.animation_timer = 0
                 
-                # Calculate damage
-                damage = self.calculate_damage(self.player, self.enemy)
-                self.enemy.take_damage(damage)
+                # Calculate hit chance and determine if attack hits
+                hit_chance = self.calculate_hit_chance(self.player, self.enemy)
+                attack_hits = random.random() < hit_chance
                 
-                # Store the message for later display after animation
-                if self.enemy.is_defeated():
-                    self.pending_message = f"You attacked for {damage} damage! You defeated the enemy!"
-                    self.pending_victory = True
+                if attack_hits:
+                    # Calculate damage
+                    damage = self.calculate_damage(self.player, self.enemy)
+                    self.enemy.take_damage(damage)
+                    
+                    # Store the message for later display after animation
+                    if self.enemy.is_defeated():
+                        self.pending_message = f"You attacked for {damage} damage! You defeated the enemy!"
+                        self.pending_victory = True
+                    else:
+                        self.pending_message = f"You attacked for {damage} damage!"
                 else:
-                    self.pending_message = f"You attacked for {damage} damage!"
+                    # Attack missed
+                    self.pending_message = "Your attack missed!"
                 
             elif action == "DEFEND":
                 self.player.defend()
@@ -245,8 +280,10 @@ class BattleSystem:
                 self.enemy_attacking = False
                 self.animation_timer = 0
                 
-                # Apply damage to player
-                self.player.take_damage(self.pending_damage)
+                # Apply damage to player (only if attack didn't miss)
+                if "missed" not in self.pending_message:
+                    self.player.take_damage(self.pending_damage)
+                
                 self.set_message(self.pending_message)
                 
                 # Check if player was defeated
@@ -300,15 +337,25 @@ class BattleSystem:
             self.enemy_attacking = True
             self.animation_timer = 0
             
-            # Calculate damage values using our new method
-            self.pending_damage = self.calculate_damage(self.enemy, self.player)
-            self.original_damage = self.enemy.attack
+            # Calculate hit chance and determine if attack hits
+            hit_chance = self.calculate_hit_chance(self.enemy, self.player)
+            attack_hits = random.random() < hit_chance
             
-            # Prepare message based on player's defending status
-            if self.player.defending:
-                self.pending_message = f"Enemy attacked for {self.original_damage} ATK, but you defended with {self.player.defense * self.player.defense_multiplier} DEF! Took {self.pending_damage} damage."
+            if attack_hits:
+                # Calculate damage values using our method
+                self.pending_damage = self.calculate_damage(self.enemy, self.player)
+                self.original_damage = self.enemy.attack
+                
+                # Prepare message based on player's defending status
+                if self.player.defending:
+                    self.pending_message = f"Enemy attacked for {self.original_damage} ATK, but you defended with {self.player.defense * self.player.defense_multiplier} DEF! Took {self.pending_damage} damage."
+                else:
+                    self.pending_message = f"Enemy attacked for {self.original_damage} ATK against your {self.player.defense} DEF! Took {self.pending_damage} damage."
             else:
-                self.pending_message = f"Enemy attacked for {self.original_damage} ATK against your {self.player.defense} DEF! Took {self.pending_damage} damage."
+                # Attack missed
+                self.pending_damage = 0
+                self.original_damage = self.enemy.attack
+                self.pending_message = "Enemy's attack missed!"
                     
     def draw(self, screen):
         """
@@ -365,7 +412,7 @@ class BattleSystem:
         """
         # Get the font
         font = pygame.font.SysFont('Arial', 24)
-        small_font = pygame.font.SysFont('Arial', 20)
+        small_font = pygame.font.SysFont('Arial', 18)
         
         # Draw only player stat window at the bottom of the screen
         # Enemy stats won't be shown by default
