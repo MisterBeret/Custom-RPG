@@ -22,6 +22,7 @@ class BattleSystem:
         """
         self.player = player
         self.enemy = enemy
+        self.action_processing = False  # Flag to prevent multiple actions per turn
         
         # Determine who goes first based on speed
         if player.spd >= enemy.spd:
@@ -112,7 +113,8 @@ class BattleSystem:
         Args:
             action: The action to process ("ATTACK", "DEFEND", or "RUN")
         """
-        if self.turn == 0:  # Player's turn
+        if self.turn == 0 and not self.action_processing:  # Player's turn and not already processing
+            self.action_processing = True
             if action == "ATTACK":
                 # Start player attack animation
                 self.player_attacking = True
@@ -215,6 +217,9 @@ class BattleSystem:
                     # Switch to enemy's turn
                     self.turn = 1
                     self.enemy_turn_processed = False  # Reset the flag
+                        
+                self.action_processing = False
+
         
         # Handle enemy attack animation
         elif self.enemy_attacking:
@@ -237,6 +242,8 @@ class BattleSystem:
                     
                     # Switch back to player turn
                     self.turn = 0
+
+                    self.action_processing = False
         
         # Handle fleeing animation
         elif self.player_fleeing:
@@ -247,6 +254,8 @@ class BattleSystem:
                 self.set_message("You successfully fled from battle!")
                 self.battle_over = True
                 self.fled = True
+
+                self.action_processing = False
         
         # Handle delay for the defend action
         elif self.turn == 0 and "defending" in self.full_message:
@@ -256,6 +265,8 @@ class BattleSystem:
                 # Switch to enemy turn
                 self.turn = 1
                 self.enemy_turn_processed = False  # Reset the flag
+
+                self.action_processing = False
         
         # Process enemy turn if it's enemy's turn and no animation is active
         elif self.turn == 1 and not self.enemy_attacking and not self.enemy_turn_processed:
@@ -370,7 +381,7 @@ class BattleSystem:
                 screen.blit(message_text, (SCREEN_WIDTH//2 - 290, 80 + i * 30))
         
         # Draw battle options in their own box (only on player's turn when not animating)
-        if self.turn == 0 and not self.battle_over and not self.player_attacking and not self.enemy_attacking and not self.player_fleeing:
+        if self.turn == 0 and not self.battle_over and not self.player_attacking and not self.enemy_attacking and not self.player_fleeing and self.action_delay == 0:
             # Only display battle options when the text is fully displayed
             if self.message_index >= len(self.full_message):
                 # Create options box on the left bottom (since player window is now on the right)
