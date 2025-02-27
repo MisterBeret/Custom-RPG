@@ -5,7 +5,7 @@ import pygame
 from constants import (BLACK, WHITE, GREEN, RED, GRAY, SCREEN_WIDTH, SCREEN_HEIGHT,
                       ATTACK_ANIMATION_DURATION, FLEE_ANIMATION_DURATION,
                       ACTION_DELAY_DURATION, BATTLE_OPTIONS, MAX_LOG_SIZE,
-                      ORANGE)  # Added ORANGE color
+                      ORANGE, BLUE, DARK_BLUE)  # Added ORANGE color
 
 class BattleSystem:
     """
@@ -104,6 +104,23 @@ class BattleSystem:
         # Calculate damage as attacker's attack minus defender's effective defense
         damage = max(0, attacker.attack - effective_defense)
         
+        return damage
+    
+    def calculate_magic_damage(self, caster, target, base_power=0):
+        """
+        Calculate magic damage based on caster's INT and target's RES stats.
+    
+        Args:
+            caster: The entity casting the spell
+            target: The target of the spell
+            base_power: Base power of the spell
+        
+        Returns:
+            int: The calculated magic damage amount (minimum 0)
+        """
+        # Magic damage formula: (caster's INT + spell base power) - target's RES
+        damage = max(0, (caster.intelligence + base_power) - target.resilience)
+    
         return damage
         
     def process_action(self, action):
@@ -417,7 +434,7 @@ class BattleSystem:
     def _draw_player_stat_window(self, screen, font, small_font):
         """
         Draw the player's stat window at the bottom of the screen.
-        Shows only LV, XP, and HP as requested.
+        Shows LV, XP, HP, and MP
         
         Args:
             screen: The Pygame surface to draw on
@@ -426,7 +443,7 @@ class BattleSystem:
         """
         # Create player stat window (centered at bottom since enemy UI is removed)
         window_width = 300  # More compact width that fits all needed info
-        window_height = 60  # Reduced height since we're showing fewer stats
+        window_height = 80  # Decent height to show all relevant stats 
         window_x = SCREEN_WIDTH - window_width - 20  # Positioned on the right side
         window_y = SCREEN_HEIGHT - window_height - 5
         
@@ -438,25 +455,36 @@ class BattleSystem:
         player_name = font.render(f"Player  LV: {self.player.level}", True, GREEN)
         screen.blit(player_name, (window_x + 10, window_y + 5))
         
-        # Draw HP as a bar with text
-        hp_bar_width = window_width - 110  # Leave room for the text
-        hp_bar_height = 15
-        hp_bar_x = window_x + 100
+        # Draw HP/MP as a bar with text
+        bar_width = window_width - 110  # Leave room for the text
+        bar_height = 15
+        bar_x = window_x + 100
         hp_bar_y = window_y + 10
         
         # Draw the HP bar background (depleted health shown as gray)
-        pygame.draw.rect(screen, GRAY, (hp_bar_x, hp_bar_y, hp_bar_width, hp_bar_height))
-        
-        # Draw the current HP fill (active health shown as orange)
-        hp_fill_width = int((self.player.hp / self.player.max_hp) * hp_bar_width)
-        pygame.draw.rect(screen, ORANGE, (hp_bar_x, hp_bar_y, hp_fill_width, hp_bar_height))
+        pygame.draw.rect(screen, GRAY, (bar_x, hp_bar_y, bar_width, bar_height))
+        hp_fill_width = int((self.player.hp / self.player.max_hp) * bar_width)
+        pygame.draw.rect(screen, ORANGE, (bar_x, hp_bar_y, hp_fill_width, bar_height))
         
         # Draw HP text
         hp_text = small_font.render(f"HP: {self.player.hp}/{self.player.max_hp}", True, WHITE)
-        screen.blit(hp_text, (window_x + 10, window_y + 10))
+        screen.blit(hp_text, (window_x + 10, hp_bar_y + 2))
+
+        # Draw MP as a bar with text
+        mp_bar_y = hp_bar_y + bar_height + 5  # Position MP bar below HP bar
+
+        # Draw the MP bar background (depleted mana shown as dark blue)
+        pygame.draw.rect(screen, DARK_BLUE, (bar_x, mp_bar_y, bar_width, bar_height))
+
+        # Draw the current MP fill (active mana shown as bright blue)
+        if self.player.max_mp > 0:  # Avoid division by zero
+            mp_fill_width = int((self.player.mp / self.player.max_mp) * bar_width)
+            pygame.draw.rect(screen, BLUE, (bar_x, mp_bar_y, mp_fill_width, bar_height))
+
+        # Draw MP text
+        mp_text = small_font.render(f"MP: {self.player.mp}/{self.player.max_mp}", True, WHITE)
+        screen.blit(mp_text, (window_x + 10, mp_bar_y + 2))
         
         # Draw XP in bottom of window
         xp_text = small_font.render(f"XP: {self.player.experience}", True, WHITE)
-        screen.blit(xp_text, (window_x + 10, window_y + 35))
-    
-    # The enemy stat window method has been removed since we're no longer displaying enemy stats by default
+        screen.blit(xp_text, (window_x + 10, mp_bar_y + 25))

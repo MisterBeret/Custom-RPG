@@ -11,16 +11,18 @@ BLACK = (0, 0, 0)
 WHITE = (255, 255, 255)
 GREEN = (0, 255, 0)
 RED = (255, 0, 0)
-GRAY = (120, 120, 120)  # Darker gray for depleted HP
+GRAY = (120, 120, 120)  # Darker gray for depleted bars
 ORANGE = (230, 120, 0)  # Deeper orange for HP bars
 YELLOW = (255, 255, 0)  # For highlighting special items/options
+BLUE = (30, 144, 255)   # Bright blue for MP bars
+DARK_BLUE = (25, 25, 112)  
 
 # Game states
 WORLD_MAP = 0
 BATTLE = 1
 PAUSE = 2
 SETTINGS = 3
-INVENTORY = 4  # New state for inventory
+INVENTORY = 4  
 
 # Text speed options
 TEXT_SPEED_SLOW = "SLOW"

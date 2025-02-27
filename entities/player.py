@@ -31,6 +31,10 @@ class Player(Entity):
         # Battle stats
         self.max_hp = 10
         self.hp = 10
+        self.max_mp = 5  # Player starts with 5 MP
+        self.mp = 5      # Current MP
+        self.intelligence = 2  # Intelligence set to 2 for magic damage
+        self.resilience = 1    # Resilience set to 1 to reduce magic damage
         self.attack = 2  # Attack set to 2
         self.defense = 1  # Defense stat set to 1
         self.spd = 5  # Speed determines turn order
@@ -137,11 +141,18 @@ class Player(Entity):
         self.level += 1
         self.max_hp += 2
         self.hp = self.max_hp  # Restore HP on level up
+        self.max_mp += 1
+        self.mp = self.max_mp  # Restore MP on level up
         self.attack += 1
         
-        # Every 2 levels, increase defense
+        # Every 2 levels, increase defense and intelligence
         if self.level % 2 == 0:
             self.defense += 1
+            self.intelligence += 1
+    
+        # Every 4 levels, increase resilience
+        if self.level % 4 == 0:
+            self.resilience += 1
             
         # Every 3 levels, increase speed
         if self.level % 3 == 0:

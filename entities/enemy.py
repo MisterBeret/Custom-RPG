@@ -23,6 +23,10 @@ class Enemy(Entity):
         # Battle stats
         self.max_hp = 3
         self.hp = 3
+        self.max_mp = 0  # Enemy starts with 0 MP
+        self.mp = 0      # Current MP
+        self.intelligence = 0  # Intelligence set to 0 (no magic ability)
+        self.resilience = 1    # Resilience set to 1 to reduce magic damage
         self.attack = 2  # Attack set to 2
         self.defense = 1  # Defense stat set to 1
         self.spd = 3  # Speed determines turn order

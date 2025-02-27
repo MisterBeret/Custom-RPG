@@ -33,6 +33,10 @@ class Entity(pygame.sprite.Sprite):
         # Battle stats
         self.max_hp = 1
         self.hp = 1
+        self.max_mp = 0  # Maximum magic points
+        self.mp = 0      # Current magic points
+        self.intelligence = 0  # Intelligence determines magic damage
+        self.resilience = 1    # Resilience reduces incoming magic damage
         self.attack = 2  # Default attack value set to 2
         self.defense = 1  # New defense stat, default value is 1
         self.spd = 1  # Speed determines turn order
@@ -60,6 +64,22 @@ class Entity(pygame.sprite.Sprite):
             bool: True if HP is 0 or less, False otherwise
         """
         return self.hp <= 0
+    
+    def use_mp(self, amount):
+        """
+        Use MP for casting spells.
+    
+        Args:
+            amount (int): Amount of MP to use
+        
+        Returns:
+            bool: True if entity had enough MP and it was used, False otherwise
+        """
+
+        if self.mp >= amount:
+            self.mp -= amount
+            return True
+        return False
         
     def keep_on_screen(self):
         """
