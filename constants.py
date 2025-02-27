@@ -13,12 +13,14 @@ GREEN = (0, 255, 0)
 RED = (255, 0, 0)
 GRAY = (120, 120, 120)  # Darker gray for depleted HP
 ORANGE = (230, 120, 0)  # Deeper orange for HP bars
+YELLOW = (255, 255, 0)  # For highlighting special items/options
 
 # Game states
 WORLD_MAP = 0
 BATTLE = 1
 PAUSE = 2
 SETTINGS = 3
+INVENTORY = 4  # New state for inventory
 
 # Text speed options
 TEXT_SPEED_SLOW = "SLOW"
@@ -31,9 +33,9 @@ FLEE_ANIMATION_DURATION = 40
 ACTION_DELAY_DURATION = 30  # Delay between turns (0.5 seconds at 60fps)
 
 # Menu options
-PAUSE_OPTIONS = ["SETTINGS", "CLOSE"]
+PAUSE_OPTIONS = ["ITEMS", "SETTINGS", "CLOSE"]  # Added ITEMS
 SETTINGS_OPTIONS = ["TEXT SPEED", "BACK"]
-BATTLE_OPTIONS = ["ATTACK", "DEFEND", "RUN"]
+BATTLE_OPTIONS = ["ATTACK", "DEFEND", "ITEMS", "RUN"]  # Added ITEMS
 
 # Message log size
 MAX_LOG_SIZE = 3  # Number of messages to keep in the battle log

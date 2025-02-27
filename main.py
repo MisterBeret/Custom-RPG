@@ -4,17 +4,19 @@ Main entry point for the RPG game.
 import pygame
 import sys
 import random
-from constants import (BLACK, WHITE, GREEN, RED, GRAY, SCREEN_WIDTH, SCREEN_HEIGHT,
-                      WORLD_MAP, BATTLE, PAUSE, SETTINGS,
+from constants import (BLACK, WHITE, GREEN, RED, GRAY, YELLOW, SCREEN_WIDTH, SCREEN_HEIGHT,
+                      WORLD_MAP, BATTLE, PAUSE, SETTINGS, INVENTORY,
                       TEXT_SPEED_SLOW, TEXT_SPEED_MEDIUM, TEXT_SPEED_FAST,
-                      PAUSE_OPTIONS, SETTINGS_OPTIONS)
+                      PAUSE_OPTIONS, SETTINGS_OPTIONS, BATTLE_OPTIONS)
 from game_states import GameStateManager
 from entities.player import Player
 from entities.enemy import Enemy
 from systems.battle_system import BattleSystem
+from systems.inventory import get_item_effect
 
 def handle_input(event, state_manager, battle_system, player, collided_enemy, 
-                selected_pause_option, selected_settings_option, text_speed_setting):
+                selected_pause_option, selected_settings_option, text_speed_setting,
+                selected_inventory_option, inventory_mode):
     """
     Handle user input based on the current game state.
     
@@ -27,16 +29,64 @@ def handle_input(event, state_manager, battle_system, player, collided_enemy,
         selected_pause_option: The currently selected pause menu option
         selected_settings_option: The currently selected settings menu option
         text_speed_setting: The current text speed setting
+        selected_inventory_option: The currently selected inventory item
+        inventory_mode: Whether viewing inventory from pause menu or battle
     """
+    # Handle keyboard input for inventory screen
+    if state_manager.is_inventory:
+        if event.type == pygame.KEYDOWN:
+            item_names = player.inventory.get_item_names()
+            # Add BACK as the last option
+            options = item_names + ["BACK"]
+            
+            if event.key == pygame.K_UP:
+                selected_inventory_option = (selected_inventory_option - 1) % len(options)
+            elif event.key == pygame.K_DOWN:
+                selected_inventory_option = (selected_inventory_option + 1) % len(options)
+            elif event.key == pygame.K_RETURN:
+                selected_item = options[selected_inventory_option]
+                
+                if selected_item == "BACK":
+                    # Return to previous state
+                    state_manager.return_to_previous()
+                else:
+                    # Use the item based on context
+                    if inventory_mode == "pause":
+                        # Using item from pause menu (only healing items work here)
+                        success, message = player.use_item(selected_item)
+                        # TODO: Display message to user
+                    elif inventory_mode == "battle" and battle_system:
+                        # Using item in battle
+                        if selected_item == "SCAN LENS":
+                            # Scan the enemy
+                            success, message = player.use_item(selected_item, battle_system.enemy)
+                            if success:
+                                battle_system.set_message(message)
+                                # End player's turn after using an item
+                                battle_system.turn = 1
+                                battle_system.enemy_turn_processed = False
+                        else:
+                            # Use the item (like POTION)
+                            success, message = player.use_item(selected_item)
+                            if success:
+                                battle_system.set_message(message)
+                                # End player's turn after using an item
+                                battle_system.turn = 1
+                                battle_system.enemy_turn_processed = False
+
     # Handle keyboard input for pause menu
-    if state_manager.is_pause:
+    elif state_manager.is_pause:
         if event.type == pygame.KEYDOWN:
             if event.key == pygame.K_UP:
                 selected_pause_option = (selected_pause_option - 1) % len(PAUSE_OPTIONS)
             elif event.key == pygame.K_DOWN:
                 selected_pause_option = (selected_pause_option + 1) % len(PAUSE_OPTIONS)
             elif event.key == pygame.K_RETURN:
-                if PAUSE_OPTIONS[selected_pause_option] == "SETTINGS":
+                if PAUSE_OPTIONS[selected_pause_option] == "ITEMS":
+                    state_manager.change_state(INVENTORY)
+                    selected_inventory_option = 0  # Reset selection
+                    inventory_mode = "pause"  # Set mode for context
+                elif PAUSE_OPTIONS[selected_pause_option] == "SETTINGS":
                     state_manager.change_state(SETTINGS)
                     selected_settings_option = 0  # Reset selection
                 elif PAUSE_OPTIONS[selected_pause_option] == "CLOSE":
@@ -75,15 +125,26 @@ def handle_input(event, state_manager, battle_system, player, collided_enemy,
                             battle_system.selected_option = (battle_system.selected_option + 1) % len(battle_system.battle_options)
                         elif event.key == pygame.K_RETURN or event.key == pygame.K_SPACE:
                             selected_action = battle_system.battle_options[battle_system.selected_option]
-                            battle_system.process_action(selected_action)
+                            
+                            # Handle the ITEMS action
+                            if selected_action == "ITEMS":
+                                state_manager.change_state(INVENTORY)
+                                selected_inventory_option = 0  # Reset selection
+                                inventory_mode = "battle"  # Set mode for context
+                            else:
+                                battle_system.process_action(selected_action)
                     else:
                         # If message is still scrolling, pressing any key will display it immediately
                         battle_system.displayed_message = battle_system.full_message
                         battle_system.message_index = len(battle_system.full_message)
 
+    # Return updated values
+    return selected_pause_option, selected_settings_option, selected_inventory_option, inventory_mode
+
 
 def draw_game(screen, state_manager, battle_system, all_sprites, enemies,
-             selected_pause_option, selected_settings_option, text_speed_setting, font):
+             selected_pause_option, selected_settings_option, text_speed_setting,
+             selected_inventory_option, inventory_mode, font):
     """
     Draw the game based on the current state.
     
@@ -96,6 +157,8 @@ def draw_game(screen, state_manager, battle_system, all_sprites, enemies,
         selected_pause_option: The currently selected pause menu option
         selected_settings_option: The currently selected settings menu option
         text_speed_setting: The current text speed setting
+        selected_inventory_option: The currently selected inventory item
+        inventory_mode: Whether viewing inventory from pause or battle
         font: The pygame font to use for text
     """
     if state_manager.is_world_map:
@@ -163,6 +226,84 @@ def draw_game(screen, state_manager, battle_system, all_sprites, enemies,
         else:
             option_text = font.render(f"  {SETTINGS_OPTIONS[1]}", True, GRAY)
         screen.blit(option_text, (SCREEN_WIDTH//2 - 100, 290))
+        
+    elif state_manager.is_inventory:
+        # Draw the underlying state in the background
+        if state_manager.previous_state == WORLD_MAP:
+            screen.fill(BLACK)
+            all_sprites.draw(screen)
+            enemies.draw(screen)
+        elif state_manager.previous_state == BATTLE and battle_system:
+            battle_system.draw(screen)
+        elif state_manager.previous_state == PAUSE:
+            # If coming from pause, and pause was above world map
+            screen.fill(BLACK)
+            all_sprites.draw(screen)
+            enemies.draw(screen)
+        
+        # Draw semi-transparent overlay
+        overlay = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.SRCALPHA)
+        overlay.fill((0, 0, 0, 128))  # Semi-transparent black
+        screen.blit(overlay, (0, 0))
+        
+        # Get a reference to the player
+        player = all_sprites.sprites()[0]  # Assuming player is the first sprite
+        
+        # Draw inventory menu
+        menu_title = font.render("INVENTORY", True, WHITE)
+        screen.blit(menu_title, (SCREEN_WIDTH//2 - menu_title.get_width()//2, 150))
+        
+        # Get item names and add BACK option
+        item_names = player.inventory.get_item_names()
+        options = item_names + ["BACK"]
+        
+        # Draw inventory header
+        header_text = font.render("ITEM           QTY   DESCRIPTION", True, WHITE)
+        screen.blit(header_text, (SCREEN_WIDTH//2 - 200, 190))
+        
+        # Draw horizontal line under header
+        pygame.draw.line(screen, WHITE, (SCREEN_WIDTH//2 - 200, 220), (SCREEN_WIDTH//2 + 200, 220))
+        
+        # Draw each item with quantity and description
+        for i, item_name in enumerate(item_names):
+            # Get the item and its quantity
+            quantity = player.inventory.get_quantity(item_name)
+            item = get_item_effect(item_name)
+            
+            # Prepare display text with highlighted selection
+            if i == selected_inventory_option:
+                name_text = font.render(f"> {item_name}", True, WHITE)
+            else:
+                name_text = font.render(f"  {item_name}", True, GRAY)
+                
+            # Draw item name
+            screen.blit(name_text, (SCREEN_WIDTH//2 - 200, 230 + i*30))
+            
+            # Draw quantity
+            qty_text = font.render(f"{quantity:2d}", True, GRAY if i != selected_inventory_option else WHITE)
+            screen.blit(qty_text, (SCREEN_WIDTH//2 - 50, 230 + i*30))
+            
+            # Draw description (truncated if needed)
+            if item:
+                desc = item.description
+                if len(desc) > 30:
+                    desc = desc[:27] + "..."
+                desc_text = font.render(desc, True, GRAY if i != selected_inventory_option else WHITE)
+                screen.blit(desc_text, (SCREEN_WIDTH//2 - 25, 230 + i*30))
+        
+        # Draw BACK option
+        if len(options) - 1 == selected_inventory_option:
+            back_text = font.render(f"> BACK", True, WHITE)
+        else:
+            back_text = font.render(f"  BACK", True, GRAY)
+        screen.blit(back_text, (SCREEN_WIDTH//2 - 200, 230 + len(item_names)*30))
+        
+        # Draw context-sensitive help
+        if inventory_mode == "pause":
+            help_text = font.render("Select an item to use outside of battle", True, YELLOW)
+        else:
+            help_text = font.render("Select an item to use in battle", True, YELLOW)
+        screen.blit(help_text, (SCREEN_WIDTH//2 - 200, 230 + (len(options) + 1)*30))
 
 
 def main():
@@ -189,9 +330,11 @@ def main():
     # Game settings
     text_speed_setting = TEXT_SPEED_FAST  # Default text speed
     
-    # Pause menu options
+    # Menu options
     selected_pause_option = 0
     selected_settings_option = 0
+    selected_inventory_option = 0  # New variable for inventory selection
+    inventory_mode = "pause"       # New variable for inventory context
     
     # Create a player
     player = Player(SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2)
@@ -227,9 +370,15 @@ def main():
                 elif state_manager.is_settings:
                     state_manager.change_state(PAUSE)
                     selected_pause_option = 0  # Reset to first option in pause menu
+                elif state_manager.is_inventory:
+                    state_manager.return_to_previous()
             
-            handle_input(event, state_manager, battle_system, player, collided_enemy, 
-                         selected_pause_option, selected_settings_option, text_speed_setting)
+            # Handle input for all game states
+            selected_pause_option, selected_settings_option, selected_inventory_option, inventory_mode = handle_input(
+                event, state_manager, battle_system, player, collided_enemy, 
+                selected_pause_option, selected_settings_option, text_speed_setting,
+                selected_inventory_option, inventory_mode
+            )
         
         # Update game logic based on current state
         if state_manager.is_world_map:
@@ -259,8 +408,11 @@ def main():
                     battle_system = None
         
         # Draw the current game state
-        draw_game(screen, state_manager, battle_system, all_sprites, enemies, 
-                 selected_pause_option, selected_settings_option, text_speed_setting, font)
+        draw_game(
+            screen, state_manager, battle_system, all_sprites, enemies, 
+            selected_pause_option, selected_settings_option, text_speed_setting,
+            selected_inventory_option, inventory_mode, font
+        )
         
         # Flip the display
         pygame.display.flip()

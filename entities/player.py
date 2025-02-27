@@ -4,6 +4,7 @@ Player class for the RPG game.
 import pygame
 from entities.entity import Entity
 from constants import GREEN, SCREEN_WIDTH, SCREEN_HEIGHT
+from systems.inventory import Inventory  # Import the inventory system
 
 class Player(Entity):
     """
@@ -35,6 +36,9 @@ class Player(Entity):
         self.spd = 5  # Speed determines turn order
         self.defending = False
         self.defense_multiplier = 1  # New property to track defense multiplier
+        
+        # Inventory
+        self.inventory = Inventory()
         
     def update(self, enemies=None):
         """
@@ -142,3 +146,37 @@ class Player(Entity):
         # Every 3 levels, increase speed
         if self.level % 3 == 0:
             self.spd += 1
+            
+    def use_item(self, item_name, target=None):
+        """
+        Use an item from the inventory.
+        
+        Args:
+            item_name: The name of the item to use
+            target: The target of the item effect (if applicable)
+            
+        Returns:
+            tuple: (bool, str) - Success flag and result message
+        """
+        from systems.inventory import get_item_effect
+        
+        # Check if we have the item
+        if not self.inventory.use_item(item_name):
+            return False, f"No {item_name} available!"
+            
+        # Get the item effect
+        item = get_item_effect(item_name)
+        if not item:
+            return False, f"Unknown item: {item_name}"
+            
+        # Apply the effect
+        if item.effect_type == "healing":
+            old_hp = self.hp
+            self.hp = min(self.hp + item.effect_value, self.max_hp)
+            healed = self.hp - old_hp
+            return True, f"Used {item_name}! Restored {healed} HP."
+            
+        elif item.effect_type == "scan" and target:
+            return True, f"Used {item_name}! {target.__class__.__name__} stats:\nHP: {target.hp}/{target.max_hp}\nATK: {target.attack}\nDEF: {target.defense}\nSPD: {target.spd}"
+            
+        return False, f"Couldn't use {item_name} effectively."
