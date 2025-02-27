@@ -44,18 +44,16 @@ class Enemy(Entity):
     
     def defend(self):
         """
-        Enter defensive stance to double defense.
+        Enter defensive stance to halve incoming damage and increase evasion by 25%.
         """
         self.defending = True
-        self.defense_multiplier = 2  # Double defense when defending
         
     def end_turn(self):
         """
         End the turn and reset temporary stat changes.
         """
-        if self.defending:
-            self.defending = False
-            self.defense_multiplier = 1  # Reset defense multiplier
+        self.defending = False
+
         
     @classmethod
     def spawn_random(cls):

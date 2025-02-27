@@ -40,7 +40,6 @@ class Player(Entity):
         self.acc = 2  # New accuracy stat
         self.spd = 5  # Speed determines turn order
         self.defending = False
-        self.defense_multiplier = 1  # New property to track defense multiplier
         
         # Inventory
         self.inventory = Inventory()
@@ -106,7 +105,6 @@ class Player(Entity):
         Enter defensive stance to double defense.
         """
         self.defending = True
-        self.defense_multiplier = 2  # Double defense when defending
         
     def end_turn(self):
         """
@@ -114,7 +112,6 @@ class Player(Entity):
         """
         if self.defending:
             self.defending = False
-            self.defense_multiplier = 1  # Reset defense multiplier
         
     def gain_experience(self, amount):
         """

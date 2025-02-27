@@ -107,30 +107,39 @@ class BattleSystem:
             # High accuracy case - 90% base hit chance, +5% per point above opponent's speed
             hit_chance = 0.9 + (attacker.acc - defender.spd) * 0.05
             # Cap at 99% hit chance (always a small chance to miss)
-            return min(0.99, hit_chance)
+            hit_chance = min(0.99, hit_chance)
         else:
             # Low accuracy case - lose 20% hit chance per point below opponent's speed
             hit_chance = 0.9 - (defender.spd - attacker.acc) * 0.2
             # Minimum 10% hit chance (always a small chance to hit)
-            return max(0.1, hit_chance)
+            hit_chance = max(0.1, hit_chance)
+    
+        # If defender is defending, reduce hit chance by 25%
+        if defender.defending:
+            hit_chance = max(0, hit_chance - 0.25)
+        
+        return hit_chance
     
     def calculate_damage(self, attacker, defender):
         """
         Calculate damage based on attacker's ATK and defender's DEF stats.
-        
+        Also applies a 50% damage reduction if defending.
+    
         Args:
             attacker: The attacking entity
             defender: The defending entity
-            
+        
         Returns:
             int: The calculated damage amount (minimum 0)
         """
-        # Calculate effective defense based on defense multiplier
-        effective_defense = defender.defense * defender.defense_multiplier
-        
-        # Calculate damage as attacker's attack minus defender's effective defense
-        damage = max(0, attacker.attack - effective_defense)
-        
+        # Calculate base damage as attacker's attack minus defender's defense
+        damage = max(0, attacker.attack - defender.defense)
+    
+        # If defender is defending, reduce all damage by 50% (rounded up)
+        if defender.defending:
+            import math
+            damage = math.ceil(damage / 2)
+    
         return damage
     
     def calculate_magic_damage(self, caster, target, base_power=0):
@@ -147,6 +156,11 @@ class BattleSystem:
         """
         # Magic damage formula: (caster's INT + spell base power) - target's RES
         damage = max(0, (caster.intelligence + base_power) - target.resilience)
+
+        # If target is defending, reduce all damage by 50% (rounded up)
+        if target.defending:
+            import math
+            damage = math.ceil(damage / 2)
     
         return damage
         
@@ -175,7 +189,7 @@ class BattleSystem:
                     
                     # Store the message for later display after animation
                     if self.enemy.is_defeated():
-                        self.pending_message = f"You attacked for {damage} damage! You defeated the enemy!"
+                        self.pending_message = f"You attacked for {damage} damage! Enemy defeated!"
                         self.pending_victory = True
                     else:
                         self.pending_message = f"You attacked for {damage} damage!"
@@ -185,15 +199,17 @@ class BattleSystem:
                 
             elif action == "DEFEND":
                 self.player.defend()
-                self.set_message(f"You are defending! DEF increased to {self.player.defense * self.player.defense_multiplier}!")
-                # Reset the action delay timer
+                self.set_message("You're defending! Incoming damage reduced and evasion increased!")
+                #Reset the action delay timer
                 self.action_delay = 0
+                #Make sure we're setting action_processing to True
+                self.action_processing = True
                 
             elif action == "RUN":
                 # Start flee animation
                 self.player_fleeing = True
                 self.animation_timer = 0
-                self.set_message("You're fleeing from battle!")
+                self.set_message("You tried to flee!")
 
     def set_message(self, message):
         """
@@ -305,7 +321,7 @@ class BattleSystem:
             if self.animation_timer >= self.flee_animation_duration:
                 self.player_fleeing = False
                 self.animation_timer = 0
-                self.set_message("You successfully fled from battle!")
+                self.set_message("You fled from battle!")
                 self.battle_over = True
                 self.fled = True
 
@@ -319,7 +335,7 @@ class BattleSystem:
                 # Switch to enemy turn
                 self.turn = 1
                 self.enemy_turn_processed = False  # Reset the flag
-
+                # Add this line:
                 self.action_processing = False
         
         # Process enemy turn if it's enemy's turn and no animation is active
@@ -336,26 +352,35 @@ class BattleSystem:
             # Start enemy attack animation
             self.enemy_attacking = True
             self.animation_timer = 0
-            
+        
             # Calculate hit chance and determine if attack hits
             hit_chance = self.calculate_hit_chance(self.enemy, self.player)
             attack_hits = random.random() < hit_chance
-            
+        
             if attack_hits:
-                # Calculate damage values using our method
+                # Calculate damage values
                 self.pending_damage = self.calculate_damage(self.enemy, self.player)
-                self.original_damage = self.enemy.attack
-                
+            
+                # For display purposes, calculate what damage would be without defending
+                if self.player.defending:
+                    import math
+                    self.original_damage = self.pending_damage * 2
+                else:
+                    self.original_damage = self.pending_damage
+            
                 # Prepare message based on player's defending status
                 if self.player.defending:
-                    self.pending_message = f"Enemy attacked for {self.original_damage} ATK, but you defended with {self.player.defense * self.player.defense_multiplier} DEF! Took {self.pending_damage} damage."
+                    self.pending_message = f"Enemy attacked! Your defense reduced damage from {self.original_damage} to {self.pending_damage}!"
                 else:
-                    self.pending_message = f"Enemy attacked for {self.original_damage} ATK against your {self.player.defense} DEF! Took {self.pending_damage} damage."
+                    self.pending_message = f"Enemy attacked for {self.pending_damage} damage!"
             else:
                 # Attack missed
                 self.pending_damage = 0
-                self.original_damage = self.enemy.attack
-                self.pending_message = "Enemy's attack missed!"
+                # Prepare message based on why it might have missed
+                if self.player.defending:
+                    self.pending_message = "Enemy's attack missed! Your defensive stance helped you evade!"
+                else:
+                    self.pending_message = "Enemy's attack missed!"
                     
     def draw(self, screen):
         """
