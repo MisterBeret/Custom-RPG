@@ -59,6 +59,9 @@ class BattleSystem:
         # Message log to store recent battle messages
         self.message_log = [self.first_message]
         self.max_log_size = MAX_LOG_SIZE
+
+        self.options_visible_count = 4  # Maximum number of visible options at once
+        self.options_scroll_offset = 0  # Current scroll offset for battle options
         
         # Animation properties
         self.player_pos = (550, 400)  # Player now on the right
@@ -569,18 +572,18 @@ class BattleSystem:
     def _draw_battle_ui(self, screen):
         """
         Draw the battle UI elements.
-        
+    
         Args:
             screen: The Pygame surface to draw on
         """
         # Get the font
         font = pygame.font.SysFont('Arial', 24)
         small_font = pygame.font.SysFont('Arial', 18)
-        
+    
         # Draw only player stat window at the bottom of the screen
         # Enemy stats won't be shown by default
         self._draw_player_stat_window(screen, font, small_font)
-        
+    
         # Draw battle message log - a text box showing multiple recent messages
         message_box_height = 30 * len(self.message_log) + 20  # Height based on number of messages
         message_box_rect = pygame.Rect(
@@ -591,14 +594,14 @@ class BattleSystem:
         )
         pygame.draw.rect(screen, BLACK, message_box_rect)
         pygame.draw.rect(screen, WHITE, message_box_rect, 2)  # White border
-        
+    
         # Draw all messages in the log
         for i, message in enumerate(self.message_log):
             # Only the newest message scrolls, others are shown in full
             if i == len(self.message_log) - 1 and message == self.full_message:
                 message_text = font.render(self.displayed_message, True, WHITE)
                 screen.blit(message_text, (SCREEN_WIDTH//2 - 290, 80 + i * 30))
-                
+            
                 # Draw "..." when text is still being displayed
                 if self.message_index < len(self.full_message):
                     typing_indicator = font.render("...", True, WHITE)
@@ -606,7 +609,7 @@ class BattleSystem:
             else:
                 message_text = font.render(message, True, GRAY)  # Older messages in gray
                 screen.blit(message_text, (SCREEN_WIDTH//2 - 290, 80 + i * 30))
-        
+    
         # Draw battle options or spell menu
         if self.turn == 0 and not self.battle_over and not self.player_attacking and not self.enemy_attacking and not self.player_fleeing and not self.player_casting and self.action_delay == 0:
             # Only display UI when the text is fully displayed
@@ -615,13 +618,84 @@ class BattleSystem:
                     self._draw_spell_menu(screen, font, small_font)
                 else:
                     self._draw_battle_options(screen, font)
-                    
+                
         # Display continue message if battle is over
         if self.battle_over:
             # Only display the continue message when the text is fully displayed
             if self.message_index >= len(self.full_message):
                 continue_text = font.render("Press ENTER to continue", True, WHITE)
                 screen.blit(continue_text, (SCREEN_WIDTH//2 - continue_text.get_width()//2, 500))
+    
+    def _draw_battle_options(self, screen, font):
+        """
+        Draw the main battle options menu with scrolling capability.
+    
+        Args:
+            screen: The pygame surface to draw on
+            font: The font to use
+        """
+        # Create options box on the left bottom with increased height for 4 options
+        options_box_width = 200
+        options_box_height = 150  # Increased from 120 to fit 4 options comfortably
+        options_box_x = 20
+        options_box_y = SCREEN_HEIGHT - options_box_height - 5  # At the bottom left
+    
+        # Draw box background and border
+        pygame.draw.rect(screen, BLACK, (options_box_x, options_box_y, options_box_width, options_box_height))
+        pygame.draw.rect(screen, WHITE, (options_box_x, options_box_y, options_box_width, options_box_height), 2)
+    
+        # Draw "Actions" header
+        actions_text = font.render("Actions", True, WHITE)
+        screen.blit(actions_text, (options_box_x + options_box_width // 2 - actions_text.get_width() // 2, options_box_y + 10))
+    
+        # Calculate the scroll offset based on selected option
+        total_options = len(self.battle_options)
+    
+        # Adjust scroll offset when cursor moves down
+        if self.selected_option >= self.options_scroll_offset + self.options_visible_count:
+            self.options_scroll_offset = self.selected_option - self.options_visible_count + 1
+    
+        # Adjust scroll offset when cursor moves up
+        if self.selected_option < self.options_scroll_offset:
+            self.options_scroll_offset = self.selected_option
+    
+        # Ensure scroll offset stays within bounds
+        max_scroll = max(0, total_options - self.options_visible_count)
+        self.options_scroll_offset = max(0, min(self.options_scroll_offset, max_scroll))
+    
+        # Draw scroll indicators if needed
+        if self.options_scroll_offset > 0:
+            # Draw up arrow or indicator
+            pygame.draw.polygon(screen, WHITE, [
+                (options_box_x + options_box_width // 2, options_box_y + 35),
+                (options_box_x + options_box_width // 2 - 10, options_box_y + 45),
+                (options_box_x + options_box_width // 2 + 10, options_box_y + 45)
+            ])
+    
+        if self.options_scroll_offset + self.options_visible_count < total_options:
+            # Draw down arrow or indicator
+            bottom_y = options_box_y + options_box_height - 15
+            pygame.draw.polygon(screen, WHITE, [
+                (options_box_x + options_box_width // 2, bottom_y + 10),
+                (options_box_x + options_box_width // 2 - 10, bottom_y),
+                (options_box_x + options_box_width // 2 + 10, bottom_y)
+            ])
+    
+        # Draw visible battle options based on scroll offset
+        visible_end = min(self.options_scroll_offset + self.options_visible_count, total_options)
+    
+        for i in range(self.options_scroll_offset, visible_end):
+            option = self.battle_options[i]
+            display_index = i - self.options_scroll_offset  # Adjust for drawing position
+        
+            if i == self.selected_option:
+                # Highlight selected option
+                option_text = font.render(f"> {option}", True, WHITE)
+            else:
+                option_text = font.render(f"  {option}", True, GRAY)
+        
+            # Draw at the calculated position
+            screen.blit(option_text, (options_box_x + 30, options_box_y + 50 + display_index * 25))
     
     def _draw_spell_menu(self, screen, font, small_font):
         """
@@ -695,37 +769,6 @@ class BattleSystem:
             if spell:
                 desc_text = small_font.render(spell.description, True, WHITE)
                 screen.blit(desc_text, (spell_box_x + 30, spell_box_y + 40 + len(options) * 25))
-                
-    def _draw_battle_options(self, screen, font):
-        """
-        Draw the main battle options menu.
-        
-        Args:
-            screen: The pygame surface to draw on
-            font: The font to use
-        """
-        # Create options box on the left bottom
-        options_box_width = 200
-        options_box_height = 120
-        options_box_x = 20
-        options_box_y = SCREEN_HEIGHT - options_box_height - 5  # At the bottom left
-        
-        # Draw box background and border
-        pygame.draw.rect(screen, BLACK, (options_box_x, options_box_y, options_box_width, options_box_height))
-        pygame.draw.rect(screen, WHITE, (options_box_x, options_box_y, options_box_width, options_box_height), 2)
-        
-        # Draw "Actions" header
-        actions_text = font.render("Actions", True, WHITE)
-        screen.blit(actions_text, (options_box_x + options_box_width // 2 - actions_text.get_width() // 2, options_box_y + 10))
-        
-        # Draw battle options
-        for i, option in enumerate(self.battle_options):
-            if i == self.selected_option:
-                # Highlight selected option
-                option_text = font.render(f"> {option}", True, WHITE)
-            else:
-                option_text = font.render(f"  {option}", True, GRAY)
-            screen.blit(option_text, (options_box_x + 30, options_box_y + 40 + i * 20))
                 
     def _draw_player_stat_window(self, screen, font, small_font):
         """
