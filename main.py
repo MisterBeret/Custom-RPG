@@ -35,6 +35,9 @@ def handle_input(event, state_manager, battle_system, player, collided_enemy,
         selected_inventory_option: The currently selected inventory item
         inventory_mode: Whether viewing inventory from pause menu or battle
     """
+    # Flag to track if text_speed_setting was modified
+    text_speed_changed = False
+    
     # Handle keyboard input for inventory screen
     if state_manager.is_inventory:
         if event.type == pygame.KEYDOWN:
@@ -107,7 +110,8 @@ def handle_input(event, state_manager, battle_system, player, collided_enemy,
             elif event.key == pygame.K_DOWN:
                 selected_settings_option = (selected_settings_option + 1) % len(SETTINGS_OPTIONS)
             elif event.key == pygame.K_RETURN:
-                if SETTINGS_OPTIONS[selected_settings_option] == "TEXT SPEED":
+                # The first option (index 0) should be TEXT SPEED
+                if selected_settings_option == 0:
                     # Cycle through text speed options
                     if text_speed_setting == TEXT_SPEED_SLOW:
                         text_speed_setting = TEXT_SPEED_MEDIUM
@@ -115,7 +119,16 @@ def handle_input(event, state_manager, battle_system, player, collided_enemy,
                         text_speed_setting = TEXT_SPEED_FAST
                     else:  # FAST
                         text_speed_setting = TEXT_SPEED_SLOW
-                elif SETTINGS_OPTIONS[selected_settings_option] == "BACK":
+                    
+                    # Indicate that text speed was changed
+                    text_speed_changed = True
+                    
+                    # Update battle system if we're in battle
+                    if battle_system:
+                        battle_system.set_text_speed(text_speed_setting)
+                
+                # The second option (index 1) should be BACK
+                elif selected_settings_option == 1:
                     state_manager.return_to_previous()
         
     # Handle keyboard input for battle
@@ -156,8 +169,8 @@ def handle_input(event, state_manager, battle_system, player, collided_enemy,
                         player.reset_position()
                         battle_system = None
 
-    # Return updated values
-    return selected_pause_option, selected_settings_option, selected_inventory_option, inventory_mode, battle_system
+    # Return updated values including the text_speed_setting
+    return selected_pause_option, selected_settings_option, selected_inventory_option, inventory_mode, battle_system, text_speed_setting
 
 
 def draw_game(screen, state_manager, battle_system, all_sprites, enemies,
@@ -179,6 +192,9 @@ def draw_game(screen, state_manager, battle_system, all_sprites, enemies,
         inventory_mode: Whether viewing inventory from pause or battle
         font: The pygame font to use for text
     """
+    # First clear the screen - this is essential
+    screen.fill(BLACK)
+    
     if state_manager.is_world_map:
         # Clear the screen
         screen.fill(BLACK)
@@ -192,16 +208,18 @@ def draw_game(screen, state_manager, battle_system, all_sprites, enemies,
             battle_system.draw(screen)
             
     elif state_manager.is_pause:
-        # Draw the paused game in the background
+        # First draw the underlying state (world map or battle)
         if state_manager.previous_state == WORLD_MAP:
-            # First draw the world map
-            screen.fill(BLACK)
+            # Draw world map
             all_sprites.draw(screen)
             enemies.draw(screen)
-        
+        elif state_manager.previous_state == BATTLE and battle_system:
+            # Draw battle screen
+            battle_system.draw(screen)
+            
         # Draw semi-transparent overlay
         overlay = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.SRCALPHA)
-        overlay.fill((0, 0, 0, 128))  # Semi-transparent black
+        overlay.fill((0, 0, 0, 128))  # Semi-transparent black (50% opacity)
         screen.blit(overlay, (0, 0))
         
         # Draw pause menu
@@ -216,15 +234,25 @@ def draw_game(screen, state_manager, battle_system, all_sprites, enemies,
             screen.blit(option_text, (SCREEN_WIDTH//2 - 50, 250 + i*40))
             
     elif state_manager.is_settings:
-        # Draw the paused game in the background (same as PAUSE)
+        # First draw the underlying state (world map or battle)
         if state_manager.previous_state == WORLD_MAP:
-            screen.fill(BLACK)
+            # Draw world map
             all_sprites.draw(screen)
             enemies.draw(screen)
+        elif state_manager.previous_state == BATTLE and battle_system:
+            # Draw battle screen
+            battle_system.draw(screen)
+        elif state_manager.previous_state == PAUSE:
+            # If we came from pause, we need to draw what was under pause
+            if state_manager.state_stack[0] == WORLD_MAP:
+                all_sprites.draw(screen)
+                enemies.draw(screen)
+            elif state_manager.state_stack[0] == BATTLE and battle_system:
+                battle_system.draw(screen)
         
         # Draw semi-transparent overlay
         overlay = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.SRCALPHA)
-        overlay.fill((0, 0, 0, 128))  # Semi-transparent black
+        overlay.fill((0, 0, 0, 128))  # Semi-transparent black (50% opacity)
         screen.blit(overlay, (0, 0))
         
         # Draw settings menu
@@ -246,30 +274,33 @@ def draw_game(screen, state_manager, battle_system, all_sprites, enemies,
         screen.blit(option_text, (SCREEN_WIDTH//2 - 100, 290))
         
     elif state_manager.is_inventory:
-        # Draw the underlying state in the background
+        # First draw the underlying state (world map or battle)
         if state_manager.previous_state == WORLD_MAP:
-            screen.fill(BLACK)
+            # Draw world map
             all_sprites.draw(screen)
             enemies.draw(screen)
         elif state_manager.previous_state == BATTLE and battle_system:
+            # Draw battle screen
             battle_system.draw(screen)
         elif state_manager.previous_state == PAUSE:
-            # If coming from pause, and pause was above world map
-            screen.fill(BLACK)
-            all_sprites.draw(screen)
-            enemies.draw(screen)
+            # If we came from pause, we need to draw what was under pause
+            if state_manager.state_stack[0] == WORLD_MAP:
+                all_sprites.draw(screen)
+                enemies.draw(screen)
+            elif state_manager.state_stack[0] == BATTLE and battle_system:
+                battle_system.draw(screen)
         
         # Draw semi-transparent overlay
         overlay = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.SRCALPHA)
-        overlay.fill((0, 0, 0, 128))  # Semi-transparent black
+        overlay.fill((0, 0, 0, 128))  # Semi-transparent black (50% opacity)
         screen.blit(overlay, (0, 0))
-        
-        # Get a reference to the player
-        player = all_sprites.sprites()[0]  # Assuming player is the first sprite
         
         # Draw inventory menu
         menu_title = font.render("INVENTORY", True, WHITE)
         screen.blit(menu_title, (SCREEN_WIDTH//2 - menu_title.get_width()//2, 150))
+        
+        # Get a reference to the player
+        player = all_sprites.sprites()[0]  # Assuming player is the first sprite
         
         # Get item names and add BACK option
         item_names = player.inventory.get_item_names()
@@ -389,16 +420,23 @@ def main():
                     # Always return to the previous state (either PAUSE or BATTLE)
                     state_manager.return_to_previous()
             
-            # Handle input for all game states
-            selected_pause_option, selected_settings_option, selected_inventory_option, inventory_mode, new_battle_system = handle_input(
+            # Handle input for all game states including text speed toggling
+            updated_values = handle_input(
                 event, state_manager, battle_system, player, collided_enemy, 
                 selected_pause_option, selected_settings_option, text_speed_setting,
                 selected_inventory_option, inventory_mode
             )
             
-            # Update battle_system if changed (e.g. ended or modified)
-            if new_battle_system is not None:
-                battle_system = new_battle_system
+            # Unpack the returned values and update our local variables
+            # Now expecting 6 values: the original 5 plus text_speed_setting
+            selected_pause_option, selected_settings_option, selected_inventory_option, inventory_mode, battle_system_update, new_text_speed = updated_values
+            
+            # Update text_speed_setting if it was changed
+            text_speed_setting = new_text_speed
+            
+            # Update battle_system if it was modified
+            if battle_system_update is not None:
+                battle_system = battle_system_update
         
         # Update game logic based on current state
         if state_manager.is_world_map:
