@@ -3,6 +3,11 @@ Battle system for the RPG game.
 """
 import pygame
 import random
+import sys
+import os
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from utils import scale_position, scale_dimensions, scale_font_size
+
 from constants import (BLACK, WHITE, GREEN, RED, GRAY, SCREEN_WIDTH, SCREEN_HEIGHT,
                       ATTACK_ANIMATION_DURATION, FLEE_ANIMATION_DURATION,
                       ACTION_DELAY_DURATION, SPELL_ANIMATION_DURATION, 
@@ -495,11 +500,18 @@ class BattleSystem:
                     
     def draw(self, screen):
         """
-        Draw the battle scene.
+        Draw the battle scene with scaling support.
         
         Args:
             screen: The Pygame surface to draw on
         """
+        # Import utils here to avoid circular imports
+        from utils import scale_position, scale_dimensions
+        
+        # Get current screen dimensions
+        current_width, current_height = screen.get_size()
+        original_width, original_height = 800, 600  # Original design resolution
+        
         # Clear screen
         screen.fill(BLACK)
         
@@ -509,20 +521,18 @@ class BattleSystem:
         
         if self.player_attacking:
             # Move player toward enemy during first half, then back
-            # Now player moves left (-) toward enemy
+            # Player moves left (-) toward enemy
             if self.animation_timer < self.animation_duration / 2:
                 player_offset_x = int(-30 * (self.animation_timer / (self.animation_duration / 2)))
             else:
                 player_offset_x = int(-30 * (1 - (self.animation_timer - self.animation_duration / 2) / (self.animation_duration / 2)))
-                
+                    
         elif self.player_fleeing:
             # Move player off the right side of the screen
-            # Start at normal position, then move increasingly to the right
             player_offset_x = int(300 * (self.animation_timer / self.flee_animation_duration))
         
         elif self.player_casting:
-            # For spell casting, add a subtle effect (slight movement or glowing effect)
-            # Just slight movement for now
+            # For spell casting, add a subtle effect
             if self.animation_timer < self.spell_animation_duration / 2:
                 player_offset_x = int(-10 * (self.animation_timer / (self.spell_animation_duration / 2)))
             else:
@@ -530,36 +540,81 @@ class BattleSystem:
         
         if self.enemy_attacking:
             # Move enemy toward player during first half, then back
-            # Now enemy moves right (+) toward player
             if self.animation_timer < self.animation_duration / 2:
                 enemy_offset_x = int(30 * (self.animation_timer / (self.animation_duration / 2)))
             else:
                 enemy_offset_x = int(30 * (1 - (self.animation_timer - self.animation_duration / 2) / (self.animation_duration / 2)))
         
-        # Draw player unless player has fled (either during animation or after)
+        # Scale positions and dimensions
+        player_pos_scaled = scale_position(self.player_pos[0], self.player_pos[1], 
+                                        original_width, original_height, 
+                                        current_width, current_height)
+        enemy_pos_scaled = scale_position(self.enemy_pos[0], self.enemy_pos[1],
+                                        original_width, original_height,
+                                        current_width, current_height)
+        
+        player_size = scale_dimensions(50, 75, original_width, original_height, 
+                                    current_width, current_height)
+        enemy_size = scale_dimensions(50, 50, original_width, original_height,
+                                    current_width, current_height)
+        
+        # Scale offset values
+        player_offset_x = int(player_offset_x * (current_width / original_width))
+        enemy_offset_x = int(enemy_offset_x * (current_width / original_width))
+        
+        # Draw player unless player has fled
         if not self.fled:
             # During fleeing animation, only draw player until they're mostly off-screen
-            if not self.player_fleeing or player_offset_x > -200:
+            if not self.player_fleeing or player_offset_x > -200 * (current_width / original_width):
                 # Draw magic effect if casting
                 if self.player_casting and self.current_spell and self.current_spell.effect_type == "damage":
                     # Draw spell projectile traveling toward enemy
                     spell_progress = self.animation_timer / self.spell_animation_duration
-                    spell_x = self.player_pos[0] - 300 * spell_progress
-                    spell_y = self.player_pos[1] + 35
-                    pygame.draw.circle(screen, RED, (int(spell_x), int(spell_y)), 10)
+                    spell_x, spell_y = scale_position(
+                        self.player_pos[0] - 300 * spell_progress,
+                        self.player_pos[1] + 35,
+                        original_width, original_height,
+                        current_width, current_height
+                    )
+                    
+                    # Scale circle radius
+                    circle_radius = int(10 * min(current_width / original_width, current_height / original_height))
+                    pygame.draw.circle(screen, RED, (int(spell_x), int(spell_y)), circle_radius)
                 
                 # Draw player character
-                pygame.draw.rect(screen, GREEN, (self.player_pos[0] + player_offset_x, self.player_pos[1], 50, 75))
+                pygame.draw.rect(screen, GREEN, 
+                                (player_pos_scaled[0] + player_offset_x, 
+                                player_pos_scaled[1], 
+                                player_size[0], player_size[1]))
                 
                 # Draw healing effect if applicable
                 if self.player_casting and self.current_spell and self.current_spell.effect_type == "healing":
+                    # Scale radius for healing particles
+                    base_radius = 20 * (current_width / original_width)
+                    radius_increase = 10 * (current_width / original_width)
+                    particle_size = int(5 * (current_width / original_width))
+                    
                     # Draw healing particles around player
                     for i in range(5):
                         angle = self.animation_timer * 0.1 + i * (2 * 3.14159 / 5)
-                        radius = 20 + 10 * (self.animation_timer / self.spell_animation_duration)
-                        heal_x = self.player_pos[0] + 25 + int(radius * pygame.math.Vector2(1, 0).rotate(angle * 57.3).x)
-                        heal_y = self.player_pos[1] + 35 + int(radius * pygame.math.Vector2(1, 0).rotate(angle * 57.3).y)
-                        pygame.draw.circle(screen, BLUE, (heal_x, heal_y), 5)
+                        radius = base_radius + radius_increase * (self.animation_timer / self.spell_animation_duration)
+                        
+                        # Center of player for particle origin
+                        center_x = player_pos_scaled[0] + player_size[0] / 2
+                        center_y = player_pos_scaled[1] + player_size[1] / 2
+                        
+                        heal_x = center_x + int(radius * pygame.math.Vector2(1, 0).rotate(angle * 57.3).x)
+                        heal_y = center_y + int(radius * pygame.math.Vector2(1, 0).rotate(angle * 57.3).y)
+                        pygame.draw.circle(screen, BLUE, (heal_x, heal_y), particle_size)
+        
+        # Draw enemy
+        pygame.draw.rect(screen, RED, 
+                        (enemy_pos_scaled[0] + enemy_offset_x, 
+                        enemy_pos_scaled[1], 
+                        enemy_size[0], enemy_size[1]))
+        
+        # Draw the battle UI
+        self._draw_battle_ui(screen)
         
         # Draw enemy
         pygame.draw.rect(screen, RED, (self.enemy_pos[0] + enemy_offset_x, self.enemy_pos[1], 50, 50))
@@ -568,44 +623,67 @@ class BattleSystem:
         
     def _draw_battle_ui(self, screen):
         """
-        Draw the battle UI elements.
+        Draw the battle UI elements with scaling support.
         
         Args:
             screen: The Pygame surface to draw on
         """
-        # Get the font
-        font = pygame.font.SysFont('Arial', 24)
-        small_font = pygame.font.SysFont('Arial', 18)
+        from utils import scale_position, scale_dimensions, scale_font_size
+        
+        # Get current screen dimensions
+        current_width, current_height = screen.get_size()
+        original_width, original_height = 800, 600  # Original design resolution
+        
+        # Scale font sizes
+        font_size = scale_font_size(24, original_width, original_height, current_width, current_height)
+        small_font_size = scale_font_size(18, original_width, original_height, current_width, current_height)
+        
+        # Create the scaled fonts
+        font = pygame.font.SysFont('Arial', font_size)
+        small_font = pygame.font.SysFont('Arial', small_font_size)
         
         # Draw only player stat window at the bottom of the screen
-        # Enemy stats won't be shown by default
         self._draw_player_stat_window(screen, font, small_font)
         
-        # Draw battle message log - a text box showing multiple recent messages
-        message_box_height = 30 * len(self.message_log) + 20  # Height based on number of messages
+        # Scale message box dimensions and position
+        message_box_width = int(600 * (current_width / original_width))
+        message_box_height = int((30 * len(self.message_log) + 20) * (current_height / original_height))
+        message_box_x = (current_width // 2) - (message_box_width // 2)
+        message_box_y = int(70 * (current_height / original_height))
+        
+        # Draw battle message log
         message_box_rect = pygame.Rect(
-            SCREEN_WIDTH//2 - 300, 
-            70, 
-            600, 
+            message_box_x, 
+            message_box_y, 
+            message_box_width, 
             message_box_height
         )
         pygame.draw.rect(screen, BLACK, message_box_rect)
-        pygame.draw.rect(screen, WHITE, message_box_rect, 2)  # White border
+        pygame.draw.rect(screen, WHITE, message_box_rect, max(1, int(2 * (current_width / original_width))))  # Scale border width
+        
+        # Scale text positions
+        message_x = message_box_x + int(10 * (current_width / original_width))
+        message_y_base = message_box_y + int(10 * (current_height / original_height))
+        message_line_height = int(30 * (current_height / original_height))
         
         # Draw all messages in the log
         for i, message in enumerate(self.message_log):
+            # Calculate y position for this message
+            message_y = message_y_base + i * message_line_height
+            
             # Only the newest message scrolls, others are shown in full
             if i == len(self.message_log) - 1 and message == self.full_message:
                 message_text = font.render(self.displayed_message, True, WHITE)
-                screen.blit(message_text, (SCREEN_WIDTH//2 - 290, 80 + i * 30))
+                screen.blit(message_text, (message_x, message_y))
                 
                 # Draw "..." when text is still being displayed
                 if self.message_index < len(self.full_message):
                     typing_indicator = font.render("...", True, WHITE)
-                    screen.blit(typing_indicator, (SCREEN_WIDTH//2 + 290, 80 + i * 30))
+                    typing_x = message_box_x + message_box_width - typing_indicator.get_width() - int(10 * (current_width / original_width))
+                    screen.blit(typing_indicator, (typing_x, message_y))
             else:
                 message_text = font.render(message, True, GRAY)  # Older messages in gray
-                screen.blit(message_text, (SCREEN_WIDTH//2 - 290, 80 + i * 30))
+                screen.blit(message_text, (message_x, message_y))
         
         # Draw battle options or spell menu
         if self.turn == 0 and not self.battle_over and not self.player_attacking and not self.enemy_attacking and not self.player_fleeing and not self.player_casting and self.action_delay == 0:
@@ -621,45 +699,66 @@ class BattleSystem:
             # Only display the continue message when the text is fully displayed
             if self.message_index >= len(self.full_message):
                 continue_text = font.render("Press ENTER to continue", True, WHITE)
-                screen.blit(continue_text, (SCREEN_WIDTH//2 - continue_text.get_width()//2, 500))
+                continue_x = (current_width // 2) - (continue_text.get_width() // 2)
+                continue_y = int(500 * (current_height / original_height))
+                screen.blit(continue_text, (continue_x, continue_y))
     
     def _draw_spell_menu(self, screen, font, small_font):
         """
-        Draw the spell selection menu.
+        Draw the spell selection menu with scaling support.
         
         Args:
             screen: The pygame surface to draw on
             font: The main font to use
             small_font: The smaller font for details
         """
-        # Create spell menu box
-        spell_box_width = 250
-        spell_box_height = 150  # Taller to fit more spells
-        spell_box_x = 20
-        spell_box_y = SCREEN_HEIGHT - spell_box_height - 5
+        from utils import scale_position, scale_dimensions
+        
+        # Get current screen dimensions
+        current_width, current_height = screen.get_size()
+        original_width, original_height = 800, 600  # Original design resolution
+        
+        # Scale menu dimensions and position
+        spell_box_width, spell_box_height = scale_dimensions(
+            250, 150, original_width, original_height, current_width, current_height
+        )
+        spell_box_x, spell_box_y = scale_position(
+            20, SCREEN_HEIGHT - 150 - 5, original_width, original_height, current_width, current_height
+        )
         
         # Draw box background and border
         pygame.draw.rect(screen, BLACK, (spell_box_x, spell_box_y, spell_box_width, spell_box_height))
-        pygame.draw.rect(screen, PURPLE, (spell_box_x, spell_box_y, spell_box_width, spell_box_height), 2)
+        border_width = max(1, int(2 * (current_width / original_width)))
+        pygame.draw.rect(screen, PURPLE, (spell_box_x, spell_box_y, spell_box_width, spell_box_height), border_width)
         
         # Draw "Magic" header
         magic_text = font.render("Magic", True, PURPLE)
-        screen.blit(magic_text, (spell_box_x + spell_box_width // 2 - magic_text.get_width() // 2, spell_box_y + 10))
+        header_x = spell_box_x + (spell_box_width // 2) - (magic_text.get_width() // 2)
+        header_y = spell_box_y + int(10 * (current_height / original_height))
+        screen.blit(magic_text, (header_x, header_y))
         
         # Get spell list from player's spellbook
         spell_names = self.player.spellbook.get_spell_names()
         # Add "BACK" option at the end
         options = spell_names + ["BACK"]
         
+        # Scale text positions
+        option_x = spell_box_x + int(30 * (current_width / original_width))
+        option_y_base = spell_box_y + int(40 * (current_height / original_height))
+        option_line_height = int(25 * (current_height / original_height))
+        mp_cost_x = spell_box_x + int(150 * (current_width / original_width))
+        
         # Draw each spell with MP cost
         for i, spell_name in enumerate(options):
+            option_y = option_y_base + i * option_line_height
+            
             if spell_name == "BACK":
                 # Draw BACK option
                 if i == self.selected_spell_option:
                     option_text = font.render(f"> {spell_name}", True, WHITE)
                 else:
                     option_text = font.render(f"  {spell_name}", True, GRAY)
-                screen.blit(option_text, (spell_box_x + 30, spell_box_y + 40 + i * 25))
+                screen.blit(option_text, (option_x, option_y))
             else:
                 # Get the spell data
                 spell = self.player.spellbook.get_spell(spell_name)
@@ -683,53 +782,72 @@ class BattleSystem:
                     option_text = font.render(f"  {spell_name}", True, name_color)
                 
                 # Draw spell name
-                screen.blit(option_text, (spell_box_x + 30, spell_box_y + 40 + i * 25))
+                screen.blit(option_text, (option_x, option_y))
                 
                 # Draw MP cost
                 mp_text = small_font.render(f"{spell.mp_cost} MP", True, BLUE)
-                screen.blit(mp_text, (spell_box_x + 150, spell_box_y + 40 + i * 25))
+                screen.blit(mp_text, (mp_cost_x, option_y))
         
         # Draw spell description for selected spell
         if self.selected_spell_option < len(spell_names):
             spell = self.player.spellbook.get_spell(options[self.selected_spell_option])
             if spell:
+                desc_y = option_y_base + len(options) * option_line_height
                 desc_text = small_font.render(spell.description, True, WHITE)
-                screen.blit(desc_text, (spell_box_x + 30, spell_box_y + 40 + len(options) * 25))
+                screen.blit(desc_text, (option_x, desc_y))
                 
     def _draw_battle_options(self, screen, font):
         """
-        Draw the main battle options menu.
+        Draw the main battle options menu with scaling support.
         
         Args:
             screen: The pygame surface to draw on
             font: The font to use
         """
-        # Create options box on the left bottom
-        options_box_width = 200
-        options_box_height = 120
-        options_box_x = 20
-        options_box_y = SCREEN_HEIGHT - options_box_height - 5  # At the bottom left
+        from utils import scale_position, scale_dimensions
+        
+        # Get current screen dimensions
+        current_width, current_height = screen.get_size()
+        original_width, original_height = 800, 600  # Original design resolution
+        
+        # Scale dimensions and position
+        options_box_width, options_box_height = scale_dimensions(
+            200, 120, original_width, original_height, current_width, current_height
+        )
+        options_box_x, options_box_y = scale_position(
+            20, SCREEN_HEIGHT - 120 - 5, original_width, original_height, current_width, current_height
+        )
         
         # Draw box background and border
         pygame.draw.rect(screen, BLACK, (options_box_x, options_box_y, options_box_width, options_box_height))
-        pygame.draw.rect(screen, WHITE, (options_box_x, options_box_y, options_box_width, options_box_height), 2)
+        border_width = max(1, int(2 * (current_width / original_width)))
+        pygame.draw.rect(screen, WHITE, (options_box_x, options_box_y, options_box_width, options_box_height), border_width)
         
         # Draw "Actions" header
         actions_text = font.render("Actions", True, WHITE)
-        screen.blit(actions_text, (options_box_x + options_box_width // 2 - actions_text.get_width() // 2, options_box_y + 10))
+        header_x = options_box_x + (options_box_width // 2) - (actions_text.get_width() // 2)
+        header_y = options_box_y + int(10 * (current_height / original_height))
+        screen.blit(actions_text, (header_x, header_y))
+        
+        # Scale text positions
+        option_x = options_box_x + int(30 * (current_width / original_width))
+        option_y_base = options_box_y + int(40 * (current_height / original_height))
+        option_line_height = int(20 * (current_height / original_height))
         
         # Draw battle options
         for i, option in enumerate(self.battle_options):
+            option_y = option_y_base + i * option_line_height
+            
             if i == self.selected_option:
                 # Highlight selected option
                 option_text = font.render(f"> {option}", True, WHITE)
             else:
                 option_text = font.render(f"  {option}", True, GRAY)
-            screen.blit(option_text, (options_box_x + 30, options_box_y + 40 + i * 20))
+            screen.blit(option_text, (option_x, option_y))
                 
     def _draw_player_stat_window(self, screen, font, small_font):
         """
-        Draw the player's stat window at the bottom of the screen.
+        Draw the player's stat window with scaling support.
         Shows LV, XP, HP, and MP
         
         Args:
@@ -737,25 +855,37 @@ class BattleSystem:
             font: The main font to use
             small_font: The smaller font for detailed stats
         """
-        # Create player stat window (centered at bottom since enemy UI is removed)
-        window_width = 300  # More compact width that fits all needed info
-        window_height = 80  # Decent height to show all relevant stats 
-        window_x = SCREEN_WIDTH - window_width - 20  # Positioned on the right side
-        window_y = SCREEN_HEIGHT - window_height - 5
+        from utils import scale_position, scale_dimensions
+        
+        # Get current screen dimensions
+        current_width, current_height = screen.get_size()
+        original_width, original_height = 800, 600  # Original design resolution
+        
+        # Scale dimensions and position
+        window_width, window_height = scale_dimensions(
+            300, 80, original_width, original_height, current_width, current_height
+        )
+        window_x, window_y = scale_position(
+            SCREEN_WIDTH - 300 - 20, SCREEN_HEIGHT - 80 - 5, 
+            original_width, original_height, current_width, current_height
+        )
         
         # Draw window background and border
         pygame.draw.rect(screen, BLACK, (window_x, window_y, window_width, window_height))
-        pygame.draw.rect(screen, GREEN, (window_x, window_y, window_width, window_height), 2)
+        border_width = max(1, int(2 * (current_width / original_width)))
+        pygame.draw.rect(screen, GREEN, (window_x, window_y, window_width, window_height), border_width)
         
         # Draw player name and level at top of window
         player_name = font.render(f"Player  LV: {self.player.level}", True, GREEN)
-        screen.blit(player_name, (window_x + 10, window_y + 5))
+        name_x = window_x + int(10 * (current_width / original_width))
+        name_y = window_y + int(5 * (current_height / original_height))
+        screen.blit(player_name, (name_x, name_y))
         
-        # Draw HP/MP as a bar with text
-        bar_width = window_width - 110  # Leave room for the text
-        bar_height = 15
-        bar_x = window_x + 100
-        hp_bar_y = window_y + 10
+        # Scale bars
+        bar_width = window_width - int(110 * (current_width / original_width))
+        bar_height = int(15 * (current_height / original_height))
+        bar_x = window_x + int(100 * (current_width / original_width))
+        hp_bar_y = window_y + int(10 * (current_height / original_height))
         
         # Draw the HP bar background (depleted health shown as gray)
         pygame.draw.rect(screen, GRAY, (bar_x, hp_bar_y, bar_width, bar_height))
@@ -764,10 +894,12 @@ class BattleSystem:
         
         # Draw HP text
         hp_text = small_font.render(f"HP: {self.player.hp}/{self.player.max_hp}", True, WHITE)
-        screen.blit(hp_text, (window_x + 10, hp_bar_y + 2))
+        hp_text_x = window_x + int(10 * (current_width / original_width))
+        hp_text_y = hp_bar_y + int(2 * (current_height / original_height))
+        screen.blit(hp_text, (hp_text_x, hp_text_y))
 
         # Draw MP as a bar with text
-        mp_bar_y = hp_bar_y + bar_height + 5  # Position MP bar below HP bar
+        mp_bar_y = hp_bar_y + bar_height + int(5 * (current_height / original_height))
 
         # Draw the MP bar background (depleted mana shown as dark blue)
         pygame.draw.rect(screen, DARK_BLUE, (bar_x, mp_bar_y, bar_width, bar_height))
@@ -779,8 +911,12 @@ class BattleSystem:
 
         # Draw MP text
         mp_text = small_font.render(f"MP: {self.player.mp}/{self.player.max_mp}", True, WHITE)
-        screen.blit(mp_text, (window_x + 10, mp_bar_y + 2))
+        mp_text_x = window_x + int(10 * (current_width / original_width))
+        mp_text_y = mp_bar_y + int(2 * (current_height / original_height))
+        screen.blit(mp_text, (mp_text_x, mp_text_y))
         
         # Draw XP in bottom of window
         xp_text = small_font.render(f"XP: {self.player.experience}", True, WHITE)
-        screen.blit(xp_text, (window_x + 10, mp_bar_y + 25))
+        xp_text_x = window_x + int(10 * (current_width / original_width))
+        xp_text_y = mp_bar_y + int(25 * (current_height / original_height))
+        screen.blit(xp_text, (xp_text_x, xp_text_y))

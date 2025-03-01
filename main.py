@@ -4,22 +4,51 @@ Main entry point for the RPG game.
 import pygame
 import sys
 import random
-from constants import (BLACK, WHITE, GREEN, RED, GRAY, YELLOW, SCREEN_WIDTH, SCREEN_HEIGHT,
-                      WORLD_MAP, BATTLE, PAUSE, SETTINGS, INVENTORY,
-                      TEXT_SPEED_SLOW, TEXT_SPEED_MEDIUM, TEXT_SPEED_FAST,
-                      PAUSE_OPTIONS, SETTINGS_OPTIONS, BATTLE_OPTIONS)
+from constants import (
+    BLACK, WHITE, GREEN, RED, GRAY, YELLOW, SCREEN_WIDTH, SCREEN_HEIGHT,
+    WORLD_MAP, BATTLE, PAUSE, SETTINGS, INVENTORY,
+    TEXT_SPEED_SLOW, TEXT_SPEED_MEDIUM, TEXT_SPEED_FAST,
+    PAUSE_OPTIONS, SETTINGS_OPTIONS, BATTLE_OPTIONS,
+    # Add these new imports for resolution settings
+    RESOLUTION_OPTIONS, DISPLAY_MODE_OPTIONS, 
+    DISPLAY_WINDOWED, DISPLAY_BORDERLESS, DISPLAY_FULLSCREEN
+)
 from game_states import GameStateManager
 from entities.player import Player
 from entities.enemy import Enemy
 from systems.battle_system import BattleSystem
 from systems.inventory import get_item_effect
-
-# This is a comprehensive fix for the main.py file, focusing on the battle input handling
-# and integrating it properly with our new state management system
+import utils
 
 """
 Updated handle_input function in main.py to support spell casting.
 """
+
+def apply_display_settings(settings_manager):
+    """
+    Apply display settings based on current settings.
+    
+    Args:
+        settings_manager: The settings manager instance
+        
+    Returns:
+        pygame.Surface: The new display surface
+    """
+    # Get current settings
+    width, height = settings_manager.get_resolution()
+    display_mode = settings_manager.get_display_mode()
+    
+    # Set the appropriate display mode flags
+    flags = 0
+    if display_mode == DISPLAY_FULLSCREEN:
+        flags = pygame.FULLSCREEN
+    elif display_mode == DISPLAY_BORDERLESS:
+        flags = pygame.NOFRAME
+    
+    # Apply the new display settings
+    screen = pygame.display.set_mode((width, height), flags)
+    
+    return screen
 
 def handle_input(event, state_manager, battle_system, player, collided_enemy, 
                 selected_pause_option, selected_settings_option, text_speed_setting,
@@ -210,10 +239,135 @@ def handle_input(event, state_manager, battle_system, player, collided_enemy,
     # Return updated values including the text_speed_setting
     return selected_pause_option, selected_settings_option, selected_inventory_option, inventory_mode, battle_system, text_speed_setting
 
+def handle_settings_input(event, state_manager, selected_settings_option, settings_manager):
+    """
+    Handle input in the settings menu for resolution and display mode changes.
+    
+    Args:
+        event: The pygame event
+        state_manager: The game state manager
+        selected_settings_option: The currently selected settings option
+        settings_manager: The settings manager instance
+        
+    Returns:
+        tuple: (new selected_settings_option, bool indicating if display settings changed)
+    """
+    display_changed = False
+    new_selected_option = selected_settings_option
+    
+    if event.type == pygame.KEYDOWN:
+        if event.key == pygame.K_UP:
+            new_selected_option = (selected_settings_option - 1) % len(SETTINGS_OPTIONS)
+        elif event.key == pygame.K_DOWN:
+            new_selected_option = (selected_settings_option + 1) % len(SETTINGS_OPTIONS)
+        elif event.key == pygame.K_RETURN:
+            # TEXT SPEED option
+            if selected_settings_option == 0:
+                current_speed = settings_manager.get_text_speed()
+                if current_speed == TEXT_SPEED_SLOW:
+                    settings_manager.set_text_speed(TEXT_SPEED_MEDIUM)
+                elif current_speed == TEXT_SPEED_MEDIUM:
+                    settings_manager.set_text_speed(TEXT_SPEED_FAST)
+                else:  # FAST
+                    settings_manager.set_text_speed(TEXT_SPEED_SLOW)
+            
+            # RESOLUTION option
+            elif selected_settings_option == 1:
+                # Get current resolution and find its index in the options list
+                current_res = settings_manager.settings["resolution"]
+                current_idx = RESOLUTION_OPTIONS.index(current_res)
+                
+                # Move to next resolution option
+                next_idx = (current_idx + 1) % len(RESOLUTION_OPTIONS)
+                settings_manager.set_resolution(RESOLUTION_OPTIONS[next_idx])
+                
+                # Set flag to change display
+                display_changed = True
+            
+            # DISPLAY MODE option
+            elif selected_settings_option == 2:
+                # Get current display mode and find its index
+                current_mode = settings_manager.get_display_mode()
+                current_idx = DISPLAY_MODE_OPTIONS.index(current_mode)
+                
+                # Move to next mode option
+                next_idx = (current_idx + 1) % len(DISPLAY_MODE_OPTIONS)
+                settings_manager.set_display_mode(DISPLAY_MODE_OPTIONS[next_idx])
+                
+                # Set flag to change display
+                display_changed = True
+            
+            # BACK option
+            elif selected_settings_option == 3:
+                state_manager.return_to_previous()
+    
+    return new_selected_option, display_changed
+
+def draw_settings_menu(screen, settings_manager, selected_settings_option, font):
+    """
+    Draw the settings menu with resolution and display mode options.
+    
+    Args:
+        screen: The pygame surface to draw on
+        settings_manager: The settings manager instance
+        selected_settings_option: The currently selected option
+        font: The font to use for text
+    """
+    from utils import scale_position, scale_dimensions
+    
+    # Get current screen dimensions
+    current_width, current_height = screen.get_size()
+    original_width, original_height = 800, 600  # Original design resolution
+    
+    # Draw semi-transparent overlay
+    overlay = pygame.Surface((current_width, current_height), pygame.SRCALPHA)
+    overlay.fill((0, 0, 0, 128))  # Semi-transparent black (50% opacity)
+    screen.blit(overlay, (0, 0))
+    
+    # Scale menu position and size
+    menu_x, menu_y = scale_position(SCREEN_WIDTH//2, 200, original_width, original_height, current_width, current_height)
+    option_x, option_y_base = scale_position(SCREEN_WIDTH//2 - 100, 250, original_width, original_height, current_width, current_height)
+    option_spacing = int(40 * (current_height / original_height))
+    
+    # Draw settings menu title
+    menu_title = font.render("SETTINGS", True, WHITE)
+    title_x = menu_x - menu_title.get_width()//2
+    screen.blit(menu_title, (title_x, menu_y))
+    
+    # Draw TEXT SPEED option with current setting
+    current_speed = settings_manager.get_text_speed()
+    if selected_settings_option == 0:
+        option_text = font.render(f"> TEXT SPEED: {current_speed}", True, WHITE)
+    else:
+        option_text = font.render(f"  TEXT SPEED: {current_speed}", True, GRAY)
+    screen.blit(option_text, (option_x, option_y_base))
+    
+    # Draw RESOLUTION option with current setting
+    current_res = settings_manager.settings["resolution"]
+    if selected_settings_option == 1:
+        option_text = font.render(f"> RESOLUTION: {current_res}", True, WHITE)
+    else:
+        option_text = font.render(f"  RESOLUTION: {current_res}", True, GRAY)
+    screen.blit(option_text, (option_x, option_y_base + option_spacing))
+    
+    # Draw DISPLAY MODE option with current setting
+    current_mode = settings_manager.get_display_mode()
+    if selected_settings_option == 2:
+        option_text = font.render(f"> DISPLAY MODE: {current_mode}", True, WHITE)
+    else:
+        option_text = font.render(f"  DISPLAY MODE: {current_mode}", True, GRAY)
+    screen.blit(option_text, (option_x, option_y_base + option_spacing * 2))
+    
+    # Draw BACK option
+    if selected_settings_option == 3:
+        option_text = font.render(f"> BACK", True, WHITE)
+    else:
+        option_text = font.render(f"  BACK", True, GRAY)
+    screen.blit(option_text, (option_x, option_y_base + option_spacing * 3))
 
 def draw_game(screen, state_manager, battle_system, all_sprites, enemies,
              selected_pause_option, selected_settings_option, text_speed_setting,
-             selected_inventory_option, inventory_mode, font):
+             selected_inventory_option, inventory_mode, font, settings_manager):
     """
     Draw the game based on the current state.
     
@@ -229,6 +383,7 @@ def draw_game(screen, state_manager, battle_system, all_sprites, enemies,
         selected_inventory_option: The currently selected inventory item
         inventory_mode: Whether viewing inventory from pause or battle
         font: The pygame font to use for text
+        settings_manager: The settings manager
     """
     # First clear the screen - this is essential
     screen.fill(BLACK)
@@ -256,20 +411,31 @@ def draw_game(screen, state_manager, battle_system, all_sprites, enemies,
             battle_system.draw(screen)
             
         # Draw semi-transparent overlay
-        overlay = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.SRCALPHA)
+        overlay = pygame.Surface((screen.get_width(), screen.get_height()), pygame.SRCALPHA)
         overlay.fill((0, 0, 0, 128))  # Semi-transparent black (50% opacity)
         screen.blit(overlay, (0, 0))
         
+        # Use the scaling utility for pause menu
+        from utils import scale_position
+        
+        current_width, current_height = screen.get_size()
+        original_width, original_height = 800, 600
+        
+        # Scale menu positions
+        menu_title_pos = scale_position(SCREEN_WIDTH//2, 200, original_width, original_height, current_width, current_height)
+        option_base_pos = scale_position(SCREEN_WIDTH//2 - 50, 250, original_width, original_height, current_width, current_height)
+        option_spacing = int(40 * (current_height / original_height))
+        
         # Draw pause menu
         menu_title = font.render("PAUSE", True, WHITE)
-        screen.blit(menu_title, (SCREEN_WIDTH//2 - menu_title.get_width()//2, 200))
+        screen.blit(menu_title, (menu_title_pos[0] - menu_title.get_width()//2, menu_title_pos[1]))
         
         for i, option in enumerate(PAUSE_OPTIONS):
             if i == selected_pause_option:
                 option_text = font.render(f"> {option}", True, WHITE)
             else:
                 option_text = font.render(f"  {option}", True, GRAY)
-            screen.blit(option_text, (SCREEN_WIDTH//2 - 50, 250 + i*40))
+            screen.blit(option_text, (option_base_pos[0], option_base_pos[1] + i * option_spacing))
             
     elif state_manager.is_settings:
         # First draw the underlying state (world map or battle)
@@ -288,28 +454,8 @@ def draw_game(screen, state_manager, battle_system, all_sprites, enemies,
             elif state_manager.state_stack[0] == BATTLE and battle_system:
                 battle_system.draw(screen)
         
-        # Draw semi-transparent overlay
-        overlay = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.SRCALPHA)
-        overlay.fill((0, 0, 0, 128))  # Semi-transparent black (50% opacity)
-        screen.blit(overlay, (0, 0))
-        
-        # Draw settings menu
-        menu_title = font.render("SETTINGS", True, WHITE)
-        screen.blit(menu_title, (SCREEN_WIDTH//2 - menu_title.get_width()//2, 200))
-        
-        # Draw TEXT SPEED option with current setting
-        if selected_settings_option == 0:
-            option_text = font.render(f"> TEXT SPEED: {text_speed_setting}", True, WHITE)
-        else:
-            option_text = font.render(f"  TEXT SPEED: {text_speed_setting}", True, GRAY)
-        screen.blit(option_text, (SCREEN_WIDTH//2 - 100, 250))
-        
-        # Draw BACK option
-        if selected_settings_option == 1:
-            option_text = font.render(f"> {SETTINGS_OPTIONS[1]}", True, WHITE)
-        else:
-            option_text = font.render(f"  {SETTINGS_OPTIONS[1]}", True, GRAY)
-        screen.blit(option_text, (SCREEN_WIDTH//2 - 100, 290))
+        # Draw the settings menu with resolution options
+        draw_settings_menu(screen, settings_manager, selected_settings_option, font)
         
     elif state_manager.is_inventory:
         # First draw the underlying state (world map or battle)
@@ -328,14 +474,30 @@ def draw_game(screen, state_manager, battle_system, all_sprites, enemies,
             elif state_manager.state_stack[0] == BATTLE and battle_system:
                 battle_system.draw(screen)
         
+        # Use scaling utility for inventory menu
+        from utils import scale_position, scale_dimensions
+        
+        current_width, current_height = screen.get_size()
+        original_width, original_height = 800, 600
+        
         # Draw semi-transparent overlay
-        overlay = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.SRCALPHA)
+        overlay = pygame.Surface((current_width, current_height), pygame.SRCALPHA)
         overlay.fill((0, 0, 0, 128))  # Semi-transparent black (50% opacity)
         screen.blit(overlay, (0, 0))
         
+        # Scale inventory menu positions
+        menu_title_pos = scale_position(SCREEN_WIDTH//2, 150, original_width, original_height, current_width, current_height)
+        header_pos = scale_position(SCREEN_WIDTH//2 - 200, 190, original_width, original_height, current_width, current_height)
+        line_start_pos = scale_position(SCREEN_WIDTH//2 - 200, 220, original_width, original_height, current_width, current_height)
+        line_end_pos = scale_position(SCREEN_WIDTH//2 + 200, 220, original_width, original_height, current_width, current_height)
+        item_base_pos = scale_position(SCREEN_WIDTH//2 - 200, 230, original_width, original_height, current_width, current_height)
+        qty_pos_x = scale_position(SCREEN_WIDTH//2 - 50, 0, original_width, original_height, current_width, current_height)[0]
+        desc_pos_x = scale_position(SCREEN_WIDTH//2 - 25, 0, original_width, original_height, current_width, current_height)[0]
+        item_spacing = int(30 * (current_height / original_height))
+        
         # Draw inventory menu
         menu_title = font.render("INVENTORY", True, WHITE)
-        screen.blit(menu_title, (SCREEN_WIDTH//2 - menu_title.get_width()//2, 150))
+        screen.blit(menu_title, (menu_title_pos[0] - menu_title.get_width()//2, menu_title_pos[1]))
         
         # Get a reference to the player
         player = all_sprites.sprites()[0]  # Assuming player is the first sprite
@@ -346,10 +508,10 @@ def draw_game(screen, state_manager, battle_system, all_sprites, enemies,
         
         # Draw inventory header
         header_text = font.render("ITEM           QTY   DESCRIPTION", True, WHITE)
-        screen.blit(header_text, (SCREEN_WIDTH//2 - 200, 190))
+        screen.blit(header_text, (header_pos[0], header_pos[1]))
         
         # Draw horizontal line under header
-        pygame.draw.line(screen, WHITE, (SCREEN_WIDTH//2 - 200, 220), (SCREEN_WIDTH//2 + 200, 220))
+        pygame.draw.line(screen, WHITE, line_start_pos, line_end_pos)
         
         # Draw each item with quantity and description
         for i, item_name in enumerate(item_names):
@@ -364,11 +526,11 @@ def draw_game(screen, state_manager, battle_system, all_sprites, enemies,
                 name_text = font.render(f"  {item_name}", True, GRAY)
                 
             # Draw item name
-            screen.blit(name_text, (SCREEN_WIDTH//2 - 200, 230 + i*30))
+            screen.blit(name_text, (item_base_pos[0], item_base_pos[1] + i * item_spacing))
             
             # Draw quantity
             qty_text = font.render(f"{quantity:2d}", True, GRAY if i != selected_inventory_option else WHITE)
-            screen.blit(qty_text, (SCREEN_WIDTH//2 - 50, 230 + i*30))
+            screen.blit(qty_text, (qty_pos_x, item_base_pos[1] + i * item_spacing))
             
             # Draw description (truncated if needed)
             if item:
@@ -376,21 +538,22 @@ def draw_game(screen, state_manager, battle_system, all_sprites, enemies,
                 if len(desc) > 30:
                     desc = desc[:27] + "..."
                 desc_text = font.render(desc, True, GRAY if i != selected_inventory_option else WHITE)
-                screen.blit(desc_text, (SCREEN_WIDTH//2 - 25, 230 + i*30))
+                screen.blit(desc_text, (desc_pos_x, item_base_pos[1] + i * item_spacing))
         
         # Draw BACK option
         if len(options) - 1 == selected_inventory_option:
             back_text = font.render(f"> BACK", True, WHITE)
         else:
             back_text = font.render(f"  BACK", True, GRAY)
-        screen.blit(back_text, (SCREEN_WIDTH//2 - 200, 230 + len(item_names)*30))
+        screen.blit(back_text, (item_base_pos[0], item_base_pos[1] + len(item_names) * item_spacing))
         
         # Draw context-sensitive help
+        help_y = item_base_pos[1] + (len(options) + 1) * item_spacing
         if inventory_mode == "pause":
             help_text = font.render("Select an item to use outside of battle", True, YELLOW)
         else:
             help_text = font.render("Select an item to use in battle", True, YELLOW)
-        screen.blit(help_text, (SCREEN_WIDTH//2 - 200, 230 + (len(options) + 1)*30))
+        screen.blit(help_text, (item_base_pos[0], help_y))
 
 
 def main():
@@ -400,11 +563,15 @@ def main():
     # Initialize Pygame
     pygame.init()
     
-    # Create the screen
-    screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT))
+    # Initialize settings manager
+    from systems.settings_manager import SettingsManager
+    settings_manager = SettingsManager()
+    
+    # Create the screen with initial settings
+    screen = apply_display_settings(settings_manager)
     pygame.display.set_caption("My RPG Game")
     
-    # Initialize fonts
+    # Initialize fonts - these will be recreated when resolution changes
     pygame.font.init()
     font = pygame.font.SysFont('Arial', 24)
     
@@ -414,8 +581,8 @@ def main():
     # Game state management
     state_manager = GameStateManager()
     
-    # Game settings
-    text_speed_setting = TEXT_SPEED_FAST  # Default text speed
+    # Game settings from settings manager
+    text_speed_setting = settings_manager.get_text_speed()
     
     # Menu options
     selected_pause_option = 0
@@ -458,23 +625,36 @@ def main():
                     # Always return to the previous state (either PAUSE or BATTLE)
                     state_manager.return_to_previous()
             
-            # Handle input for all game states including text speed toggling
-            updated_values = handle_input(
-                event, state_manager, battle_system, player, collided_enemy, 
-                selected_pause_option, selected_settings_option, text_speed_setting,
-                selected_inventory_option, inventory_mode
-            )
-            
-            # Unpack the returned values and update our local variables
-            # Now expecting 6 values: the original 5 plus text_speed_setting
-            selected_pause_option, selected_settings_option, selected_inventory_option, inventory_mode, battle_system_update, new_text_speed = updated_values
-            
-            # Update text_speed_setting if it was changed
-            text_speed_setting = new_text_speed
-            
-            # Update battle_system if it was modified
-            if battle_system_update is not None:
-                battle_system = battle_system_update
+            # Handle settings input specifically for resolution and display mode
+            if state_manager.is_settings:
+                new_selected_option, display_changed = handle_settings_input(
+                    event, state_manager, selected_settings_option, settings_manager
+                )
+                selected_settings_option = new_selected_option
+                
+                # If display settings changed, update the screen
+                if display_changed:
+                    screen = apply_display_settings(settings_manager)
+                    # Recreate font as size may need to change with resolution
+                    font = pygame.font.SysFont('Arial', 24)
+            else:
+                # Handle input for all other game states including text speed toggling
+                updated_values = handle_input(
+                    event, state_manager, battle_system, player, collided_enemy, 
+                    selected_pause_option, selected_settings_option, text_speed_setting,
+                    selected_inventory_option, inventory_mode
+                )
+                
+                # Unpack the returned values and update our local variables
+                selected_pause_option, selected_settings_option, selected_inventory_option, inventory_mode, battle_system_update, new_text_speed = updated_values
+                
+                # Update text_speed_setting if it was changed
+                text_speed_setting = new_text_speed
+                settings_manager.set_text_speed(text_speed_setting)
+                
+                # Update battle_system if it was modified
+                if battle_system_update is not None:
+                    battle_system = battle_system_update
         
         # Update game logic based on current state
         if state_manager.is_world_map:
@@ -508,7 +688,7 @@ def main():
         draw_game(
             screen, state_manager, battle_system, all_sprites, enemies, 
             selected_pause_option, selected_settings_option, text_speed_setting,
-            selected_inventory_option, inventory_mode, font
+            selected_inventory_option, inventory_mode, font, settings_manager
         )
         
         # Flip the display
@@ -516,6 +696,9 @@ def main():
         
         # Maintain 60 frames per second
         clock.tick(60)
+    
+    # Save settings before quitting
+    settings_manager.save_settings()
     
     # Quit the game
     pygame.quit()
