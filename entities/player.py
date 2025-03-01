@@ -75,15 +75,19 @@ class Player(Entity):
         if keys[pygame.K_DOWN]:
             self.rect.y += self.speed
             
-        # Keep player within screen bounds
-        self.keep_on_screen()
+        # Note: We no longer keep player within screen bounds here
+        # This allows them to walk off the edge to transition maps
+        # The map system will handle proper positioning
             
         # Check for collision with enemies
         if enemies:
             for enemy in enemies:
                 if self.rect.colliderect(enemy.rect):
+                    # Return to previous position to avoid movement into enemy
+                    self.rect.x = previous_x
+                    self.rect.y = previous_y
                     return enemy  # Return the enemy we collided with
-    
+
         return None  # No collision with enemies
 
     def reset_position(self):

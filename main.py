@@ -9,7 +9,6 @@ from constants import (
     WORLD_MAP, BATTLE, PAUSE, SETTINGS, INVENTORY,
     TEXT_SPEED_SLOW, TEXT_SPEED_MEDIUM, TEXT_SPEED_FAST,
     PAUSE_OPTIONS, SETTINGS_OPTIONS, BATTLE_OPTIONS,
-    # Add these new imports for resolution settings
     RESOLUTION_OPTIONS, DISPLAY_MODE_OPTIONS, 
     DISPLAY_WINDOWED, DISPLAY_BORDERLESS, DISPLAY_FULLSCREEN
 )
@@ -18,7 +17,9 @@ from entities.player import Player
 from entities.enemy import Enemy
 from systems.battle_system import BattleSystem
 from systems.inventory import get_item_effect
+from systems.map_system import MapSystem, MapArea
 import utils
+from map_initialization import initialize_maps
 
 """
 Updated handle_input function in main.py to support spell casting.
@@ -365,7 +366,7 @@ def draw_settings_menu(screen, settings_manager, selected_settings_option, font)
         option_text = font.render(f"  BACK", True, GRAY)
     screen.blit(option_text, (option_x, option_y_base + option_spacing * 3))
 
-def draw_game(screen, state_manager, battle_system, all_sprites, enemies,
+def draw_game(screen, state_manager, battle_system, map_system,
              selected_pause_option, selected_settings_option, text_speed_setting,
              selected_inventory_option, inventory_mode, font, settings_manager):
     """
@@ -375,8 +376,7 @@ def draw_game(screen, state_manager, battle_system, all_sprites, enemies,
         screen: The pygame surface to draw on
         state_manager: The game state manager
         battle_system: The current battle system (if in battle)
-        all_sprites: The sprite group containing all sprites
-        enemies: The sprite group containing enemies
+        map_system: The map system
         selected_pause_option: The currently selected pause menu option
         selected_settings_option: The currently selected settings menu option
         text_speed_setting: The current text speed setting
@@ -389,26 +389,18 @@ def draw_game(screen, state_manager, battle_system, all_sprites, enemies,
     screen.fill(BLACK)
     
     if state_manager.is_world_map:
-        # Clear the screen
-        screen.fill(BLACK)
-        
-        # Draw all sprites
-        all_sprites.draw(screen)
-        enemies.draw(screen)
+        # Draw the current map, which handles its own background, entities, and boundaries
+        current_map = map_system.get_current_map()
+        current_map.draw(screen)
         
     elif state_manager.is_battle:
         if battle_system:
             battle_system.draw(screen)
             
     elif state_manager.is_pause:
-        # First draw the underlying state (world map or battle)
-        if state_manager.previous_state == WORLD_MAP:
-            # Draw world map
-            all_sprites.draw(screen)
-            enemies.draw(screen)
-        elif state_manager.previous_state == BATTLE and battle_system:
-            # Draw battle screen
-            battle_system.draw(screen)
+        # First draw the underlying world map
+        current_map = map_system.get_current_map()
+        current_map.draw(screen)
             
         # Draw semi-transparent overlay
         overlay = pygame.Surface((screen.get_width(), screen.get_height()), pygame.SRCALPHA)
@@ -438,41 +430,17 @@ def draw_game(screen, state_manager, battle_system, all_sprites, enemies,
             screen.blit(option_text, (option_base_pos[0], option_base_pos[1] + i * option_spacing))
             
     elif state_manager.is_settings:
-        # First draw the underlying state (world map or battle)
-        if state_manager.previous_state == WORLD_MAP:
-            # Draw world map
-            all_sprites.draw(screen)
-            enemies.draw(screen)
-        elif state_manager.previous_state == BATTLE and battle_system:
-            # Draw battle screen
-            battle_system.draw(screen)
-        elif state_manager.previous_state == PAUSE:
-            # If we came from pause, we need to draw what was under pause
-            if state_manager.state_stack[0] == WORLD_MAP:
-                all_sprites.draw(screen)
-                enemies.draw(screen)
-            elif state_manager.state_stack[0] == BATTLE and battle_system:
-                battle_system.draw(screen)
+        # First draw the underlying world map
+        current_map = map_system.get_current_map()
+        current_map.draw(screen)
         
         # Draw the settings menu with resolution options
         draw_settings_menu(screen, settings_manager, selected_settings_option, font)
         
     elif state_manager.is_inventory:
-        # First draw the underlying state (world map or battle)
-        if state_manager.previous_state == WORLD_MAP:
-            # Draw world map
-            all_sprites.draw(screen)
-            enemies.draw(screen)
-        elif state_manager.previous_state == BATTLE and battle_system:
-            # Draw battle screen
-            battle_system.draw(screen)
-        elif state_manager.previous_state == PAUSE:
-            # If we came from pause, we need to draw what was under pause
-            if state_manager.state_stack[0] == WORLD_MAP:
-                all_sprites.draw(screen)
-                enemies.draw(screen)
-            elif state_manager.state_stack[0] == BATTLE and battle_system:
-                battle_system.draw(screen)
+        # First draw the underlying world map
+        current_map = map_system.get_current_map()
+        current_map.draw(screen)
         
         # Use scaling utility for inventory menu
         from utils import scale_position, scale_dimensions
@@ -499,61 +467,67 @@ def draw_game(screen, state_manager, battle_system, all_sprites, enemies,
         menu_title = font.render("INVENTORY", True, WHITE)
         screen.blit(menu_title, (menu_title_pos[0] - menu_title.get_width()//2, menu_title_pos[1]))
         
-        # Get a reference to the player
-        player = all_sprites.sprites()[0]  # Assuming player is the first sprite
+        # Get a reference to the player from the current map
+        current_map = map_system.get_current_map()
+        player = None
+        for entity in current_map.entities:
+            if isinstance(entity, Player):
+                player = entity
+                break
         
-        # Get item names and add BACK option
-        item_names = player.inventory.get_item_names()
-        options = item_names + ["BACK"]
-        
-        # Draw inventory header
-        header_text = font.render("ITEM           QTY   DESCRIPTION", True, WHITE)
-        screen.blit(header_text, (header_pos[0], header_pos[1]))
-        
-        # Draw horizontal line under header
-        pygame.draw.line(screen, WHITE, line_start_pos, line_end_pos)
-        
-        # Draw each item with quantity and description
-        for i, item_name in enumerate(item_names):
-            # Get the item and its quantity
-            quantity = player.inventory.get_quantity(item_name)
-            item = get_item_effect(item_name)
+        if player:
+            # Get item names and add BACK option
+            item_names = player.inventory.get_item_names()
+            options = item_names + ["BACK"]
             
-            # Prepare display text with highlighted selection
-            if i == selected_inventory_option:
-                name_text = font.render(f"> {item_name}", True, WHITE)
-            else:
-                name_text = font.render(f"  {item_name}", True, GRAY)
+            # Draw inventory header
+            header_text = font.render("ITEM           QTY   DESCRIPTION", True, WHITE)
+            screen.blit(header_text, (header_pos[0], header_pos[1]))
+            
+            # Draw horizontal line under header
+            pygame.draw.line(screen, WHITE, line_start_pos, line_end_pos)
+            
+            # Draw each item with quantity and description
+            for i, item_name in enumerate(item_names):
+                # Get the item and its quantity
+                quantity = player.inventory.get_quantity(item_name)
+                item = get_item_effect(item_name)
                 
-            # Draw item name
-            screen.blit(name_text, (item_base_pos[0], item_base_pos[1] + i * item_spacing))
+                # Prepare display text with highlighted selection
+                if i == selected_inventory_option:
+                    name_text = font.render(f"> {item_name}", True, WHITE)
+                else:
+                    name_text = font.render(f"  {item_name}", True, GRAY)
+                    
+                # Draw item name
+                screen.blit(name_text, (item_base_pos[0], item_base_pos[1] + i * item_spacing))
+                
+                # Draw quantity
+                qty_text = font.render(f"{quantity:2d}", True, GRAY if i != selected_inventory_option else WHITE)
+                screen.blit(qty_text, (qty_pos_x, item_base_pos[1] + i * item_spacing))
+                
+                # Draw description (truncated if needed)
+                if item:
+                    desc = item.description
+                    if len(desc) > 30:
+                        desc = desc[:27] + "..."
+                    desc_text = font.render(desc, True, GRAY if i != selected_inventory_option else WHITE)
+                    screen.blit(desc_text, (desc_pos_x, item_base_pos[1] + i * item_spacing))
             
-            # Draw quantity
-            qty_text = font.render(f"{quantity:2d}", True, GRAY if i != selected_inventory_option else WHITE)
-            screen.blit(qty_text, (qty_pos_x, item_base_pos[1] + i * item_spacing))
+            # Draw BACK option
+            if len(options) - 1 == selected_inventory_option:
+                back_text = font.render(f"> BACK", True, WHITE)
+            else:
+                back_text = font.render(f"  BACK", True, GRAY)
+            screen.blit(back_text, (item_base_pos[0], item_base_pos[1] + len(item_names) * item_spacing))
             
-            # Draw description (truncated if needed)
-            if item:
-                desc = item.description
-                if len(desc) > 30:
-                    desc = desc[:27] + "..."
-                desc_text = font.render(desc, True, GRAY if i != selected_inventory_option else WHITE)
-                screen.blit(desc_text, (desc_pos_x, item_base_pos[1] + i * item_spacing))
-        
-        # Draw BACK option
-        if len(options) - 1 == selected_inventory_option:
-            back_text = font.render(f"> BACK", True, WHITE)
-        else:
-            back_text = font.render(f"  BACK", True, GRAY)
-        screen.blit(back_text, (item_base_pos[0], item_base_pos[1] + len(item_names) * item_spacing))
-        
-        # Draw context-sensitive help
-        help_y = item_base_pos[1] + (len(options) + 1) * item_spacing
-        if inventory_mode == "pause":
-            help_text = font.render("Select an item to use outside of battle", True, YELLOW)
-        else:
-            help_text = font.render("Select an item to use in battle", True, YELLOW)
-        screen.blit(help_text, (item_base_pos[0], help_y))
+            # Draw context-sensitive help
+            help_y = item_base_pos[1] + (len(options) + 1) * item_spacing
+            if inventory_mode == "pause":
+                help_text = font.render("Select an item to use outside of battle", True, YELLOW)
+            else:
+                help_text = font.render("Select an item to use in battle", True, YELLOW)
+            screen.blit(help_text, (item_base_pos[0], help_y))
 
 
 def main():
@@ -587,21 +561,14 @@ def main():
     # Menu options
     selected_pause_option = 0
     selected_settings_option = 0
-    selected_inventory_option = 0  # New variable for inventory selection
-    inventory_mode = "pause"       # New variable for inventory context
+    selected_inventory_option = 0
+    inventory_mode = "pause"
     
     # Create a player
     player = Player(SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2)
     
-    # Create enemy group and add some enemies
-    enemies = pygame.sprite.Group()
-    for _ in range(3):  # Spawn 3 random enemies
-        enemy = Enemy.spawn_random()
-        enemies.add(enemy)
-    
-    # Create all sprites group and add player
-    all_sprites = pygame.sprite.Group()
-    all_sprites.add(player)
+    # Initialize map system instead of creating enemy groups directly
+    map_system = initialize_maps(player)
     
     # Battle system (will be initialized when battle starts)
     battle_system = None
@@ -658,14 +625,23 @@ def main():
         
         # Update game logic based on current state
         if state_manager.is_world_map:
-            # Check if player collides with an enemy
-            collided_enemy = player.update(enemies)
+            # Get the current map
+            current_map = map_system.get_current_map()
+            
+            # Update player separately to check for enemy collisions
+            # Get the current map's enemies
+            collided_enemy = player.update(current_map.enemies)
+            
             if collided_enemy:
                 # Switch to battle state
                 state_manager.change_state(BATTLE)
                 battle_system = BattleSystem(player, collided_enemy, text_speed_setting)
-            
-            enemies.update()
+            else:
+                # Only check for map transitions if no battle started
+                map_transition = current_map.update(player)
+                if map_transition:
+                    new_map, entry_side = map_transition
+                    map_system.transition_player(player, new_map, entry_side)
             
         elif state_manager.is_battle and battle_system:
             # Update battle animations and process turns
@@ -677,7 +653,9 @@ def main():
                 if keys[pygame.K_RETURN]:
                     # Only remove enemy if player won (not if they fled)
                     if battle_system.victory:
-                        collided_enemy.kill()
+                        # Get current map and remove the defeated enemy
+                        current_map = map_system.get_current_map()
+                        battle_system.enemy.kill()
                     
                     # Return to world map
                     state_manager.change_state(WORLD_MAP)
@@ -686,7 +664,7 @@ def main():
         
         # Draw the current game state
         draw_game(
-            screen, state_manager, battle_system, all_sprites, enemies, 
+            screen, state_manager, battle_system, map_system, 
             selected_pause_option, selected_settings_option, text_speed_setting,
             selected_inventory_option, inventory_mode, font, settings_manager
         )
