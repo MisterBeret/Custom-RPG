@@ -33,8 +33,8 @@ class Entity(pygame.sprite.Sprite):
         # Battle stats
         self.max_hp = 1 # Maximum Health Points
         self.hp = 1 # Current Health Points
-        self.max_mp = 0  # Maximum Magic Points
-        self.mp = 0      # Current Magic Points
+        self.max_sp = 0  # Maximum Special Points
+        self.sp = 0      # Current Special Points
         self.attack = 2  # ATK determines damage of physical attacks, default value is 2
         self.defense = 1  # DEf reduces incoming physical damage
         self.intelligence = 0  # INT determines magic damage
@@ -66,19 +66,19 @@ class Entity(pygame.sprite.Sprite):
         """
         return self.hp <= 0
     
-    def use_mp(self, amount):
+    def use_sp(self, amount):
         """
-        Use MP for casting spells.
+        Use SP for casting spells.
     
         Args:
-            amount (int): Amount of MP to use
+            amount (int): Amount of SP to use
         
         Returns:
-            bool: True if entity had enough MP and it was used, False otherwise
+            bool: True if entity had enough SP and it was used, False otherwise
         """
 
-        if self.mp >= amount:
-            self.mp -= amount
+        if self.sp >= amount:
+            self.sp -= amount
             return True
         return False
         

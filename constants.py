@@ -45,10 +45,10 @@ BLACK = (0, 0, 0)
 WHITE = (255, 255, 255)
 GREEN = (0, 255, 0)
 RED = (255, 0, 0)
-GRAY = (120, 120, 120)  # Darker gray for depleted bars
+GRAY = (120, 120, 120)  # Darker gray for depleted HP & SP bars
 ORANGE = (230, 120, 0)  # Deeper orange for HP bars
 YELLOW = (255, 255, 0)  # For highlighting special items/options
-BLUE = (30, 144, 255)   # Bright blue for MP bars
+BLUE = (30, 144, 255)   # Bright blue for SP bars
 DARK_BLUE = (25, 25, 112) 
 PURPLE = (128, 0, 128)  # For magic-related UI elements
 

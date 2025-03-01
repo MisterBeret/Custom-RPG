@@ -8,7 +8,7 @@ class Spell:
     """Class representing a magic spell."""
     name: str
     description: str
-    mp_cost: int
+    sp_cost: int
     effect_type: str  # 'damage', 'healing', etc.
     base_power: int   # Base power of the spell
 
@@ -82,7 +82,7 @@ def get_spell_data(spell_name):
         return Spell(
             name="FIRE",
             description="Deals fire damage to an enemy",
-            mp_cost=2,
+            sp_cost=2,
             effect_type="damage",
             base_power=5
         )
@@ -90,7 +90,7 @@ def get_spell_data(spell_name):
         return Spell(
             name="HEAL",
             description="Restores HP to the caster",
-            mp_cost=5,
+            sp_cost=5,
             effect_type="healing",
             base_power=10
         )

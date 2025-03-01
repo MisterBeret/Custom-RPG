@@ -23,8 +23,8 @@ class Enemy(Entity):
         # Battle stats
         self.max_hp = 3
         self.hp = 3
-        self.max_mp = 0  # Enemy starts with 0 MP
-        self.mp = 0      # Current MP
+        self.max_sp = 0  # Enemy's starting SP
+        self.sp = 0      # Current SP
         self.attack = 2  # Attack set to 2
         self.defense = 1  # Defense stat set to 1
         self.intelligence = 0  # Intelligence set to 0 (no magic ability)

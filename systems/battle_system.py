@@ -245,9 +245,9 @@ class BattleSystem:
                 self.set_message(f"You don't know the spell {spell_name}!")
                 return False
                 
-            # Check if player has enough MP
-            if self.player.mp < spell.mp_cost:
-                self.set_message(f"Not enough MP to cast {spell_name}!")
+            # Check if player has enough SP
+            if self.player.sp < spell.sp_cost:
+                self.set_message(f"Not enough SP to cast {spell_name}!")
                 return False
                 
             # Set the current spell for animation
@@ -258,8 +258,8 @@ class BattleSystem:
             self.player_casting = True
             self.animation_timer = 0
                 
-            # Use the MP
-            self.player.use_mp(spell.mp_cost)
+            # Use the SP
+            self.player.use_sp(spell.sp_cost)
                 
             # Handle spell effects
             if spell.effect_type == "damage":
@@ -746,9 +746,9 @@ class BattleSystem:
         option_x = spell_box_x + int(30 * (current_width / original_width))
         option_y_base = spell_box_y + int(40 * (current_height / original_height))
         option_line_height = int(25 * (current_height / original_height))
-        mp_cost_x = spell_box_x + int(150 * (current_width / original_width))
+        sp_cost_x = spell_box_x + int(150 * (current_width / original_width))
         
-        # Draw each spell with MP cost
+        # Draw each spell with SP cost
         for i, spell_name in enumerate(options):
             option_y = option_y_base + i * option_line_height
             
@@ -763,30 +763,30 @@ class BattleSystem:
                 # Get the spell data
                 spell = self.player.spellbook.get_spell(spell_name)
                 
-                # Determine text color based on whether player has enough MP
-                has_mp = self.player.mp >= spell.mp_cost
+                # Determine text color based on whether player has enough SP
+                has_sp = self.player.sp >= spell.sp_cost
                 
                 if i == self.selected_spell_option:
                     # Selected spell
-                    if has_mp:
+                    if has_sp:
                         name_color = WHITE  # Can cast
                     else:
-                        name_color = RED    # Can't cast (not enough MP)
+                        name_color = RED    # Can't cast (not enough SP)
                     option_text = font.render(f"> {spell_name}", True, name_color)
                 else:
                     # Unselected spell
-                    if has_mp:
+                    if has_sp:
                         name_color = GRAY   # Can cast
                     else:
-                        name_color = RED    # Can't cast (not enough MP)
+                        name_color = RED    # Can't cast (not enough SP)
                     option_text = font.render(f"  {spell_name}", True, name_color)
                 
                 # Draw spell name
                 screen.blit(option_text, (option_x, option_y))
                 
-                # Draw MP cost
-                mp_text = small_font.render(f"{spell.mp_cost} MP", True, BLUE)
-                screen.blit(mp_text, (mp_cost_x, option_y))
+                # Draw SP cost
+                sp_text = small_font.render(f"{spell.sp_cost} SP", True, BLUE)
+                screen.blit(sp_text, (sp_cost_x, option_y))
         
         # Draw spell description for selected spell
         if self.selected_spell_option < len(spell_names):
@@ -848,7 +848,7 @@ class BattleSystem:
     def _draw_player_stat_window(self, screen, font, small_font):
         """
         Draw the player's stat window with scaling support.
-        Shows LV, XP, HP, and MP
+        Shows LV, XP, HP, and SP
         
         Args:
             screen: The Pygame surface to draw on
@@ -898,25 +898,25 @@ class BattleSystem:
         hp_text_y = hp_bar_y + int(2 * (current_height / original_height))
         screen.blit(hp_text, (hp_text_x, hp_text_y))
 
-        # Draw MP as a bar with text
-        mp_bar_y = hp_bar_y + bar_height + int(5 * (current_height / original_height))
+        # Draw SP as a bar with text
+        sp_bar_y = hp_bar_y + bar_height + int(5 * (current_height / original_height))
 
-        # Draw the MP bar background (depleted mana shown as dark blue)
-        pygame.draw.rect(screen, DARK_BLUE, (bar_x, mp_bar_y, bar_width, bar_height))
+        # Draw the SP bar background (depleted SP shown as gray)
+        pygame.draw.rect(screen, GRAY, (bar_x, sp_bar_y, bar_width, bar_height))
 
-        # Draw the current MP fill (active mana shown as bright blue)
-        if self.player.max_mp > 0:  # Avoid division by zero
-            mp_fill_width = int((self.player.mp / self.player.max_mp) * bar_width)
-            pygame.draw.rect(screen, BLUE, (bar_x, mp_bar_y, mp_fill_width, bar_height))
+        # Draw the current SP fill (active special points shown as bright blue)
+        if self.player.max_sp > 0:  # Avoid division by zero
+            sp_fill_width = int((self.player.sp / self.player.max_sp) * bar_width)
+            pygame.draw.rect(screen, BLUE, (bar_x, sp_bar_y, sp_fill_width, bar_height))
 
-        # Draw MP text
-        mp_text = small_font.render(f"MP: {self.player.mp}/{self.player.max_mp}", True, WHITE)
-        mp_text_x = window_x + int(10 * (current_width / original_width))
-        mp_text_y = mp_bar_y + int(2 * (current_height / original_height))
-        screen.blit(mp_text, (mp_text_x, mp_text_y))
+        # Draw SP text
+        sp_text = small_font.render(f"SP: {self.player.sp}/{self.player.max_sp}", True, WHITE)
+        sp_text_x = window_x + int(10 * (current_width / original_width))
+        sp_text_y = sp_bar_y + int(2 * (current_height / original_height))
+        screen.blit(sp_text, (sp_text_x, sp_text_y))
         
         # Draw XP in bottom of window
         xp_text = small_font.render(f"XP: {self.player.experience}", True, WHITE)
         xp_text_x = window_x + int(10 * (current_width / original_width))
-        xp_text_y = mp_bar_y + int(25 * (current_height / original_height))
+        xp_text_y = sp_bar_y + int(25 * (current_height / original_height))
         screen.blit(xp_text, (xp_text_x, xp_text_y))

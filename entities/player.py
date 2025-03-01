@@ -32,8 +32,8 @@ class Player(Entity):
         # Battle stats
         self.max_hp = 10
         self.hp = 10
-        self.max_mp = 5  # Player starts with 5 MP
-        self.mp = 5      # Current MP
+        self.max_sp = 5  # Starting SP
+        self.sp = 5      # Current SP
         self.attack = 2  # Attack set to 2
         self.defense = 1  # Defense stat set to 1
         self.intelligence = 2  # Intelligence set to 2 for magic damage
@@ -133,13 +133,13 @@ class Player(Entity):
         if not spell:
             return False, f"You don't know the spell {spell_name}!"
         
-        # Check if player has enough MP
-        if self.mp < spell.mp_cost:
-            return False, f"Not enough MP to cast {spell_name}!"
+        # Check if player has enough SP
+        if self.sp < spell.sp_cost:
+            return False, f"Not enough SP to cast {spell_name}!"
         
-        # Use the MP
-        if not self.use_mp(spell.mp_cost):
-            return False, f"Failed to use MP for {spell_name}!"
+        # Use the SP
+        if not self.use_sp(spell.sp_cost):
+            return False, f"Failed to use SP for {spell_name}!"
         
         # Apply the spell effect based on type
         if spell.effect_type == "damage" and target:
@@ -200,8 +200,8 @@ class Player(Entity):
         self.level += 1
         self.max_hp += 2
         self.hp = self.max_hp  # Restore HP on level up
-        self.max_mp += 1
-        self.mp = self.max_mp  # Restore MP on level up
+        self.max_sp += 1
+        self.sp = self.max_sp  # Restore SP on level up
         self.attack += 1
         
         # Every 2 levels, increase defense and intelligence
