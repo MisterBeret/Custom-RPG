@@ -2,7 +2,8 @@
 Map system for RPG game.
 """
 import pygame
-from constants import SCREEN_WIDTH, SCREEN_HEIGHT, WHITE
+from constants import SCREEN_WIDTH, SCREEN_HEIGHT, ORIGINAL_WIDTH, ORIGINAL_HEIGHT, WHITE
+from utils import scale_position, scale_dimensions, scale_font_size
 
 class MapArea:
     """
@@ -79,35 +80,46 @@ class MapArea:
         Args:
             screen: The pygame surface to draw on
         """
+        # Get current screen dimensions
+        current_width, current_height = screen.get_size()
+        
         # Fill the background
         screen.fill(self.background_color)
         
-        # Draw boundary walls for edges that don't have connections
-        line_thickness = 5
+        # Scale border thickness based on current resolution
+        line_thickness = max(1, int(5 * (current_width / ORIGINAL_WIDTH)))
         
+        # Draw boundary walls for edges that don't have connections
         if not self.connections["north"]:
             # Draw top boundary
-            pygame.draw.line(screen, WHITE, (0, 0), (SCREEN_WIDTH, 0), line_thickness)
+            pygame.draw.line(screen, WHITE, (0, 0), (current_width, 0), line_thickness)
             
         if not self.connections["east"]:
             # Draw right boundary
-            pygame.draw.line(screen, WHITE, (SCREEN_WIDTH - line_thickness, 0), 
-                            (SCREEN_WIDTH - line_thickness, SCREEN_HEIGHT), line_thickness)
+            pygame.draw.line(screen, WHITE, (current_width - line_thickness, 0), 
+                            (current_width - line_thickness, current_height), line_thickness)
             
         if not self.connections["south"]:
             # Draw bottom boundary
-            pygame.draw.line(screen, WHITE, (0, SCREEN_HEIGHT - line_thickness), 
-                            (SCREEN_WIDTH, SCREEN_HEIGHT - line_thickness), line_thickness)
+            pygame.draw.line(screen, WHITE, (0, current_height - line_thickness), 
+                            (current_width, current_height - line_thickness), line_thickness)
             
         if not self.connections["west"]:
             # Draw left boundary
-            pygame.draw.line(screen, WHITE, (0, 0), (0, SCREEN_HEIGHT), line_thickness)
+            pygame.draw.line(screen, WHITE, (0, 0), (0, current_height), line_thickness)
         
-        # Draw map name at the top
-        font = pygame.font.SysFont('Arial', 24)
+        # Scale and draw the map name
+        font_size = scale_font_size(24, ORIGINAL_WIDTH, ORIGINAL_HEIGHT, current_width, current_height)
+        font = pygame.font.SysFont('Arial', font_size)
         name_text = font.render(self.name, True, WHITE)
-        name_x = SCREEN_WIDTH // 2 - name_text.get_width() // 2
-        screen.blit(name_text, (name_x, 10))
+        name_x = current_width // 2 - name_text.get_width() // 2
+        name_y = int(10 * (current_height / ORIGINAL_HEIGHT))
+        screen.blit(name_text, (name_x, name_y))
+        
+        # Update scaling for all entities 
+        for entity in self.entities:
+            if hasattr(entity, 'update_scale'):
+                entity.update_scale(current_width, current_height)
         
         # Draw all entities in this map
         self.entities.draw(screen)
@@ -119,21 +131,58 @@ class MapArea:
         Args:
             player: The player entity (optional)
         """
+        # Get current screen dimensions
+        if player:
+            current_width, current_height = pygame.display.get_surface().get_size()
+        
         # Update enemies
         self.enemies.update()
         
-        # If player is provided and in this map, check for edge transitions
+        # If player is provided and in this map, check for edge transitions and collisions
         if player and player in self.entities:
-            return self.check_map_transition(player)
+            # Check for collisions with boundaries
+            self.check_boundary_collision(player, current_width, current_height)
+            
+            # Check for map transitions
+            return self.check_map_transition(player, current_width, current_height)
             
         return None
+    
+    def check_boundary_collision(self, player, screen_width, screen_height):
+        """
+        Check if player is colliding with map boundaries and prevent movement past them.
         
-    def check_map_transition(self, player):
+        Args:
+            player: The player entity
+            screen_width: Current screen width
+            screen_height: Current screen height
+        """
+        line_thickness = max(1, int(5 * (screen_width / ORIGINAL_WIDTH)))
+        
+        # Check collision with north boundary
+        if player.rect.top <= 0 and not self.connections["north"]:
+            player.rect.top = line_thickness
+            
+        # Check collision with east boundary
+        if player.rect.right >= screen_width and not self.connections["east"]:
+            player.rect.right = screen_width - line_thickness
+            
+        # Check collision with south boundary
+        if player.rect.bottom >= screen_height and not self.connections["south"]:
+            player.rect.bottom = screen_height - line_thickness
+            
+        # Check collision with west boundary
+        if player.rect.left <= 0 and not self.connections["west"]:
+            player.rect.left = line_thickness
+        
+    def check_map_transition(self, player, screen_width, screen_height):
         """
         Check if player is at a map edge that should trigger a transition.
         
         Args:
             player: The player entity
+            screen_width: Current screen width
+            screen_height: Current screen height
             
         Returns:
             tuple: (new_map, position) if transition should occur, None otherwise
@@ -143,11 +192,11 @@ class MapArea:
             return (self.connections["north"], "south")
             
         # Check for east edge transition
-        if player.rect.right >= SCREEN_WIDTH and self.connections["east"]:
+        if player.rect.right >= screen_width and self.connections["east"]:
             return (self.connections["east"], "west")
             
         # Check for south edge transition
-        if player.rect.bottom >= SCREEN_HEIGHT and self.connections["south"]:
+        if player.rect.bottom >= screen_height and self.connections["south"]:
             return (self.connections["south"], "north")
             
         # Check for west edge transition
@@ -228,6 +277,9 @@ class MapSystem:
             new_map (MapArea): The destination map
             entry_side (str): The side the player is entering from
         """
+        # Get current screen dimensions
+        current_width, current_height = pygame.display.get_surface().get_size()
+        
         # Remove player from current map entities
         if self.current_map:
             self.current_map.entities.remove(player)
@@ -235,19 +287,28 @@ class MapSystem:
         # Add player to new map entities
         new_map.add_entity(player)
         
+        # Calculate the border thickness
+        line_thickness = max(1, int(5 * (current_width / ORIGINAL_WIDTH)))
+        
         # Position player at the appropriate edge of the new map
         if entry_side == "north":
-            player.rect.centerx = SCREEN_WIDTH // 2
-            player.rect.top = 5  # A small offset from the edge
+            player.rect.centerx = current_width // 2
+            player.rect.top = line_thickness + 1  # Just inside the boundary
         elif entry_side == "east":
-            player.rect.centery = SCREEN_HEIGHT // 2
-            player.rect.right = SCREEN_WIDTH - 5
+            player.rect.centery = current_height // 2
+            player.rect.right = current_width - line_thickness - 1
         elif entry_side == "south":
-            player.rect.centerx = SCREEN_WIDTH // 2
-            player.rect.bottom = SCREEN_HEIGHT - 5
+            player.rect.centerx = current_width // 2
+            player.rect.bottom = current_height - line_thickness - 1
         elif entry_side == "west":
-            player.rect.centery = SCREEN_HEIGHT // 2
-            player.rect.left = 5
+            player.rect.centery = current_height // 2
+            player.rect.left = line_thickness + 1
+        
+        # Update player's original position to match the new scaled position
+        scale_factor_x = ORIGINAL_WIDTH / current_width
+        scale_factor_y = ORIGINAL_HEIGHT / current_height
+        player.original_x = player.rect.x * scale_factor_x
+        player.original_y = player.rect.y * scale_factor_y
         
         # Set the new map as current
         self.current_map = new_map

@@ -3,9 +3,10 @@ Player class for the RPG game.
 """
 import pygame
 from entities.entity import Entity
-from constants import GREEN, SCREEN_WIDTH, SCREEN_HEIGHT
+from constants import GREEN, SCREEN_WIDTH, SCREEN_HEIGHT, ORIGINAL_WIDTH, ORIGINAL_HEIGHT
 from systems.inventory import Inventory
-from systems.spell_system import SpellBook  # Import the new spell system
+from systems.spell_system import SpellBook
+from utils import scale_position, scale_dimensions
 
 class Player(Entity):
     """
@@ -21,7 +22,8 @@ class Player(Entity):
         """
         super().__init__(x, y, 32, 48, GREEN)
         
-        # Movement speed
+        # Base movement speed (will be scaled based on resolution)
+        self.base_speed = 5
         self.speed = 5
         
         # RPG Stats
@@ -47,6 +49,25 @@ class Player(Entity):
         
         # Spell book
         self.spellbook = SpellBook()
+    
+    def update_scale(self, current_width, current_height):
+        """
+        Update player dimensions, position, and speed based on current screen resolution.
+        
+        Args:
+            current_width (int): Current screen width
+            current_height (int): Current screen height
+        """
+        # Call the parent class update_scale method
+        super().update_scale(current_width, current_height)
+        
+        # Scale the movement speed based on resolution
+        width_scale = current_width / ORIGINAL_WIDTH
+        height_scale = current_height / ORIGINAL_HEIGHT
+        scale_factor = (width_scale + height_scale) / 2  # Average scale factor
+        
+        # Adjust speed proportionally to resolution
+        self.speed = max(1, int(self.base_speed * scale_factor))
         
     def update(self, enemies=None):
         """
@@ -58,6 +79,9 @@ class Player(Entity):
         Returns:
             The enemy collided with, or None if no collision
         """
+        # Get current screen dimensions
+        current_width, current_height = pygame.display.get_surface().get_size()
+        
         # Store the current position to revert if there's a collision
         previous_x = self.rect.x
         previous_y = self.rect.y
@@ -74,10 +98,12 @@ class Player(Entity):
             self.rect.y -= self.speed
         if keys[pygame.K_DOWN]:
             self.rect.y += self.speed
-            
-        # Note: We no longer keep player within screen bounds here
-        # This allows them to walk off the edge to transition maps
-        # The map system will handle proper positioning
+        
+        # Update original position to track where we are
+        scale_factor_x = ORIGINAL_WIDTH / current_width
+        scale_factor_y = ORIGINAL_HEIGHT / current_height
+        self.original_x = self.rect.x * scale_factor_x
+        self.original_y = self.rect.y * scale_factor_y
             
         # Check for collision with enemies
         if enemies:
@@ -94,8 +120,18 @@ class Player(Entity):
         """
         Reset to center of screen after battle.
         """
-        self.rect.x = SCREEN_WIDTH // 2
-        self.rect.y = SCREEN_HEIGHT // 2
+        # Get current screen dimensions
+        current_width, current_height = pygame.display.get_surface().get_size()
+        
+        # Set position to center of current screen
+        self.rect.x = current_width // 2
+        self.rect.y = current_height // 2
+        
+        # Update original position to match new position
+        scale_factor_x = ORIGINAL_WIDTH / current_width
+        scale_factor_y = ORIGINAL_HEIGHT / current_height
+        self.original_x = self.rect.x * scale_factor_x
+        self.original_y = self.rect.y * scale_factor_y
         
     def take_damage(self, amount):
         """

@@ -4,7 +4,8 @@ Enemy class for the RPG game.
 import pygame
 import random
 from entities.entity import Entity
-from constants import RED, SCREEN_WIDTH, SCREEN_HEIGHT
+from constants import RED, SCREEN_WIDTH, SCREEN_HEIGHT, ORIGINAL_WIDTH, ORIGINAL_HEIGHT
+from utils import scale_position, scale_dimensions
 
 class Enemy(Entity):
     """
@@ -53,7 +54,6 @@ class Enemy(Entity):
         End the turn and reset temporary stat changes.
         """
         self.defending = False
-
         
     @classmethod
     def spawn_random(cls):
@@ -63,6 +63,17 @@ class Enemy(Entity):
         Returns:
             Enemy: A new enemy at a random position
         """
-        x = random.randint(100, SCREEN_WIDTH - 100)
-        y = random.randint(100, SCREEN_HEIGHT - 100)
-        return cls(x, y)
+        # Get current screen dimensions
+        current_width, current_height = pygame.display.get_surface().get_size()
+        
+        # Calculate position in terms of original resolution
+        x = random.randint(100, ORIGINAL_WIDTH - 100)
+        y = random.randint(100, ORIGINAL_HEIGHT - 100)
+        
+        # Create enemy instance
+        enemy = cls(x, y)
+        
+        # Scale enemy to match current resolution
+        enemy.update_scale(current_width, current_height)
+        
+        return enemy

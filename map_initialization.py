@@ -4,7 +4,8 @@ Map initialization for the RPG game.
 from systems.map_system import MapSystem, MapArea
 from entities.enemy import Enemy
 import random
-from constants import BLACK, BLUE, GREEN, RED, PURPLE, SCREEN_WIDTH, SCREEN_HEIGHT
+import pygame
+from constants import BLACK, BLUE, GREEN, RED, PURPLE, ORIGINAL_WIDTH, ORIGINAL_HEIGHT
 
 def initialize_maps(player):
     """
@@ -39,6 +40,12 @@ def initialize_maps(player):
     map_system.connect_maps("center", "south", "south")
     map_system.connect_maps("center", "west", "west")
     
+    # Get current screen dimensions
+    current_width, current_height = pygame.display.get_surface().get_size()
+    
+    # Scale player to match current resolution
+    player.update_scale(current_width, current_height)
+    
     # Add some enemies to the center map
     add_random_enemies(center_map, 3)
     
@@ -64,12 +71,23 @@ def add_random_enemies(map_area, count):
         map_area: The map area to add enemies to
         count: How many enemies to add
     """
+    # Get current screen dimensions
+    current_width, current_height = pygame.display.get_surface().get_size()
+    
     for _ in range(count):
         # Create enemy at random position (with some margin from edges)
+        # Use original resolution for position calculation
         margin = 100
-        x = random.randint(margin, SCREEN_WIDTH - margin)
-        y = random.randint(margin, SCREEN_HEIGHT - margin)
+        x = random.randint(margin, ORIGINAL_WIDTH - margin)
+        y = random.randint(margin, ORIGINAL_HEIGHT - margin)
+        
+        # Create enemy
         enemy = Enemy(x, y)
+        
+        # Scale enemy to match current resolution
+        enemy.update_scale(current_width, current_height)
+        
+        # Add to map
         map_area.add_enemy(enemy)
 
 

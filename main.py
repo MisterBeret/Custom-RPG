@@ -6,6 +6,7 @@ import sys
 import random
 from constants import (
     BLACK, WHITE, GREEN, RED, GRAY, YELLOW, SCREEN_WIDTH, SCREEN_HEIGHT,
+    ORIGINAL_WIDTH, ORIGINAL_HEIGHT, 
     WORLD_MAP, BATTLE, PAUSE, SETTINGS, INVENTORY,
     TEXT_SPEED_SLOW, TEXT_SPEED_MEDIUM, TEXT_SPEED_FAST,
     PAUSE_OPTIONS, SETTINGS_OPTIONS, BATTLE_OPTIONS,
@@ -25,12 +26,13 @@ from map_initialization import initialize_maps
 Updated handle_input function in main.py to support spell casting.
 """
 
-def apply_display_settings(settings_manager):
+def apply_display_settings(settings_manager, map_system=None):
     """
-    Apply display settings based on current settings.
+    Apply display settings based on current settings and update all entities.
     
     Args:
         settings_manager: The settings manager instance
+        map_system: The map system containing all entities (optional)
         
     Returns:
         pygame.Surface: The new display surface
@@ -48,6 +50,15 @@ def apply_display_settings(settings_manager):
     
     # Apply the new display settings
     screen = pygame.display.set_mode((width, height), flags)
+    
+    # If we have a map system, update all entities in all maps
+    if map_system and hasattr(map_system, 'maps'):
+        # Get all maps
+        for map_id, map_area in map_system.maps.items():
+            # Scale all entities in this map
+            for entity in map_area.entities:
+                if hasattr(entity, 'update_scale'):
+                    entity.update_scale(width, height)
     
     return screen
 
@@ -274,29 +285,35 @@ def handle_settings_input(event, state_manager, selected_settings_option, settin
             
             # RESOLUTION option
             elif selected_settings_option == 1:
-                # Get current resolution and find its index in the options list
-                current_res = settings_manager.settings["resolution"]
-                current_idx = RESOLUTION_OPTIONS.index(current_res)
-                
-                # Move to next resolution option
-                next_idx = (current_idx + 1) % len(RESOLUTION_OPTIONS)
-                settings_manager.set_resolution(RESOLUTION_OPTIONS[next_idx])
-                
-                # Set flag to change display
-                display_changed = True
+                try:
+                    # Get current resolution and find its index in the options list
+                    current_res = settings_manager.settings["resolution"]
+                    current_idx = RESOLUTION_OPTIONS.index(current_res)
+                    
+                    # Move to next resolution option
+                    next_idx = (current_idx + 1) % len(RESOLUTION_OPTIONS)
+                    settings_manager.set_resolution(RESOLUTION_OPTIONS[next_idx])
+                    
+                    # Set flag to change display
+                    display_changed = True
+                except Exception as e:
+                    print(f"Error changing resolution: {e}")
             
             # DISPLAY MODE option
             elif selected_settings_option == 2:
-                # Get current display mode and find its index
-                current_mode = settings_manager.get_display_mode()
-                current_idx = DISPLAY_MODE_OPTIONS.index(current_mode)
-                
-                # Move to next mode option
-                next_idx = (current_idx + 1) % len(DISPLAY_MODE_OPTIONS)
-                settings_manager.set_display_mode(DISPLAY_MODE_OPTIONS[next_idx])
-                
-                # Set flag to change display
-                display_changed = True
+                try:
+                    # Get current display mode and find its index
+                    current_mode = settings_manager.get_display_mode()
+                    current_idx = DISPLAY_MODE_OPTIONS.index(current_mode)
+                    
+                    # Move to next mode option
+                    next_idx = (current_idx + 1) % len(DISPLAY_MODE_OPTIONS)
+                    settings_manager.set_display_mode(DISPLAY_MODE_OPTIONS[next_idx])
+                    
+                    # Set flag to change display
+                    display_changed = True
+                except Exception as e:
+                    print(f"Error changing display mode: {e}")
             
             # BACK option
             elif selected_settings_option == 3:
@@ -315,56 +332,62 @@ def draw_settings_menu(screen, settings_manager, selected_settings_option, font)
         font: The font to use for text
     """
     from utils import scale_position, scale_dimensions
+    from constants import ORIGINAL_WIDTH, ORIGINAL_HEIGHT, SCREEN_WIDTH, SCREEN_HEIGHT, WHITE, GRAY
     
-    # Get current screen dimensions
-    current_width, current_height = screen.get_size()
-    original_width, original_height = 800, 600  # Original design resolution
-    
-    # Draw semi-transparent overlay
-    overlay = pygame.Surface((current_width, current_height), pygame.SRCALPHA)
-    overlay.fill((0, 0, 0, 128))  # Semi-transparent black (50% opacity)
-    screen.blit(overlay, (0, 0))
-    
-    # Scale menu position and size
-    menu_x, menu_y = scale_position(SCREEN_WIDTH//2, 200, original_width, original_height, current_width, current_height)
-    option_x, option_y_base = scale_position(SCREEN_WIDTH//2 - 100, 250, original_width, original_height, current_width, current_height)
-    option_spacing = int(40 * (current_height / original_height))
-    
-    # Draw settings menu title
-    menu_title = font.render("SETTINGS", True, WHITE)
-    title_x = menu_x - menu_title.get_width()//2
-    screen.blit(menu_title, (title_x, menu_y))
-    
-    # Draw TEXT SPEED option with current setting
-    current_speed = settings_manager.get_text_speed()
-    if selected_settings_option == 0:
-        option_text = font.render(f"> TEXT SPEED: {current_speed}", True, WHITE)
-    else:
-        option_text = font.render(f"  TEXT SPEED: {current_speed}", True, GRAY)
-    screen.blit(option_text, (option_x, option_y_base))
-    
-    # Draw RESOLUTION option with current setting
-    current_res = settings_manager.settings["resolution"]
-    if selected_settings_option == 1:
-        option_text = font.render(f"> RESOLUTION: {current_res}", True, WHITE)
-    else:
-        option_text = font.render(f"  RESOLUTION: {current_res}", True, GRAY)
-    screen.blit(option_text, (option_x, option_y_base + option_spacing))
-    
-    # Draw DISPLAY MODE option with current setting
-    current_mode = settings_manager.get_display_mode()
-    if selected_settings_option == 2:
-        option_text = font.render(f"> DISPLAY MODE: {current_mode}", True, WHITE)
-    else:
-        option_text = font.render(f"  DISPLAY MODE: {current_mode}", True, GRAY)
-    screen.blit(option_text, (option_x, option_y_base + option_spacing * 2))
-    
-    # Draw BACK option
-    if selected_settings_option == 3:
-        option_text = font.render(f"> BACK", True, WHITE)
-    else:
-        option_text = font.render(f"  BACK", True, GRAY)
-    screen.blit(option_text, (option_x, option_y_base + option_spacing * 3))
+    try:
+        # Get current screen dimensions
+        current_width, current_height = screen.get_size()
+        
+        # Draw semi-transparent overlay
+        overlay = pygame.Surface((current_width, current_height), pygame.SRCALPHA)
+        overlay.fill((0, 0, 0, 128))  # Semi-transparent black (50% opacity)
+        screen.blit(overlay, (0, 0))
+        
+        # Scale menu position and size
+        menu_x, menu_y = scale_position(SCREEN_WIDTH//2, 200, ORIGINAL_WIDTH, ORIGINAL_HEIGHT, current_width, current_height)
+        option_x, option_y_base = scale_position(SCREEN_WIDTH//2 - 100, 250, ORIGINAL_WIDTH, ORIGINAL_HEIGHT, current_width, current_height)
+        option_spacing = int(40 * (current_height / ORIGINAL_HEIGHT))
+        
+        # Draw settings menu title
+        menu_title = font.render("SETTINGS", True, WHITE)
+        title_x = menu_x - menu_title.get_width()//2
+        screen.blit(menu_title, (title_x, menu_y))
+        
+        # Draw TEXT SPEED option with current setting
+        current_speed = settings_manager.get_text_speed()
+        if selected_settings_option == 0:
+            option_text = font.render(f"> TEXT SPEED: {current_speed}", True, WHITE)
+        else:
+            option_text = font.render(f"  TEXT SPEED: {current_speed}", True, GRAY)
+        screen.blit(option_text, (option_x, option_y_base))
+        
+        # Draw RESOLUTION option with current setting
+        current_res = settings_manager.settings["resolution"]
+        if selected_settings_option == 1:
+            option_text = font.render(f"> RESOLUTION: {current_res}", True, WHITE)
+        else:
+            option_text = font.render(f"  RESOLUTION: {current_res}", True, GRAY)
+        screen.blit(option_text, (option_x, option_y_base + option_spacing))
+        
+        # Draw DISPLAY MODE option with current setting
+        current_mode = settings_manager.get_display_mode()
+        if selected_settings_option == 2:
+            option_text = font.render(f"> DISPLAY MODE: {current_mode}", True, WHITE)
+        else:
+            option_text = font.render(f"  DISPLAY MODE: {current_mode}", True, GRAY)
+        screen.blit(option_text, (option_x, option_y_base + option_spacing * 2))
+        
+        # Draw BACK option
+        if selected_settings_option == 3:
+            option_text = font.render(f"> BACK", True, WHITE)
+        else:
+            option_text = font.render(f"  BACK", True, GRAY)
+        screen.blit(option_text, (option_x, option_y_base + option_spacing * 3))
+    except Exception as e:
+        print(f"Error drawing settings menu: {e}")
+        # Draw a simple error message if something goes wrong
+        error_msg = font.render("Error drawing settings menu.", True, WHITE)
+        screen.blit(error_msg, (50, 50))
 
 def draw_game(screen, state_manager, battle_system, map_system,
              selected_pause_option, selected_settings_option, text_speed_setting,
@@ -531,9 +554,6 @@ def draw_game(screen, state_manager, battle_system, map_system,
 
 
 def main():
-    """
-    Main function to run the game.
-    """
     # Initialize Pygame
     pygame.init()
     
@@ -541,13 +561,16 @@ def main():
     from systems.settings_manager import SettingsManager
     settings_manager = SettingsManager()
     
-    # Create the screen with initial settings
-    screen = apply_display_settings(settings_manager)
+    # Create the screen with initial settings (no map_system yet)
+    screen = apply_display_settings(settings_manager, None)  # Pass None for now
     pygame.display.set_caption("My RPG Game")
     
     # Initialize fonts - these will be recreated when resolution changes
     pygame.font.init()
-    font = pygame.font.SysFont('Arial', 24)
+    current_width, current_height = screen.get_size()
+    font_size = utils.scale_font_size(24, ORIGINAL_WIDTH, ORIGINAL_HEIGHT, current_width, current_height)
+    font = pygame.font.SysFont('Arial', font_size)
+    pygame.display.set_caption("My RPG Game")
     
     # Clock for controlling the frame rate
     clock = pygame.time.Clock()
@@ -564,11 +587,16 @@ def main():
     selected_inventory_option = 0
     inventory_mode = "pause"
     
-    # Create a player
-    player = Player(SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2)
+    # Create a player using original dimensions
+    player = Player(ORIGINAL_WIDTH // 2, ORIGINAL_HEIGHT // 2)
     
-    # Initialize map system instead of creating enemy groups directly
+    # Initialize map system with the player
     map_system = initialize_maps(player)
+    
+    # Now that map_system exists, make sure player is properly scaled for current resolution
+    player.update_scale(current_width, current_height)
+
+    screen = apply_display_settings(settings_manager, map_system)
     
     # Battle system (will be initialized when battle starts)
     battle_system = None
@@ -599,11 +627,16 @@ def main():
                 )
                 selected_settings_option = new_selected_option
                 
-                # If display settings changed, update the screen
+                # If display settings changed, update the screen and all entities
                 if display_changed:
-                    screen = apply_display_settings(settings_manager)
-                    # Recreate font as size may need to change with resolution
-                    font = pygame.font.SysFont('Arial', 24)
+                    try:
+                        screen = apply_display_settings(settings_manager, map_system)
+                        # Recreate font with scaled size
+                        font_size = utils.scale_font_size(24, ORIGINAL_WIDTH, ORIGINAL_HEIGHT, 
+                                                        *settings_manager.get_resolution())
+                        font = pygame.font.SysFont('Arial', font_size)
+                    except Exception as e:
+                        print(f"Error applying display settings: {e}")
             else:
                 # Handle input for all other game states including text speed toggling
                 updated_values = handle_input(
