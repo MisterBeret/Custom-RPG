@@ -661,9 +661,8 @@ def main():
             # Get the current map
             current_map = map_system.get_current_map()
             
-            # Update player separately to check for enemy collisions
-            # Get the current map's enemies
-            collided_enemy = player.update(current_map.enemies)
+            # Update player with current map for boundary checking
+            collided_enemy = player.update(current_map.enemies, current_map)
             
             if collided_enemy:
                 # Switch to battle state

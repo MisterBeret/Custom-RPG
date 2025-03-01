@@ -69,12 +69,13 @@ class Player(Entity):
         # Adjust speed proportionally to resolution
         self.speed = max(1, int(self.base_speed * scale_factor))
         
-    def update(self, enemies=None):
+    def update(self, enemies=None, current_map=None):
         """
-        Update the player's state and position.
+        Update the player's state and position with boundary checking.
         
         Args:
             enemies: Optional group of enemies to check for collisions
+            current_map: The current map for boundary checking
             
         Returns:
             The enemy collided with, or None if no collision
@@ -89,15 +90,38 @@ class Player(Entity):
         # Get keyboard input
         keys = pygame.key.get_pressed()
         
-        # Move the character based on key presses
+        # Try movement in each direction separately to allow sliding along walls
         if keys[pygame.K_LEFT]:
             self.rect.x -= self.speed
+            # Check boundary collision with the left edge
+            if current_map and self.rect.left <= 0 and not current_map.connections["west"]:
+                # Calculate line thickness
+                line_thickness = max(1, int(5 * (current_width / ORIGINAL_WIDTH)))
+                self.rect.left = line_thickness
+        
         if keys[pygame.K_RIGHT]:
             self.rect.x += self.speed
+            # Check boundary collision with the right edge
+            if current_map and self.rect.right >= current_width and not current_map.connections["east"]:
+                # Calculate line thickness
+                line_thickness = max(1, int(5 * (current_width / ORIGINAL_WIDTH)))
+                self.rect.right = current_width - line_thickness
+        
         if keys[pygame.K_UP]:
             self.rect.y -= self.speed
+            # Check boundary collision with the top edge
+            if current_map and self.rect.top <= 0 and not current_map.connections["north"]:
+                # Calculate line thickness
+                line_thickness = max(1, int(5 * (current_width / ORIGINAL_WIDTH)))
+                self.rect.top = line_thickness
+        
         if keys[pygame.K_DOWN]:
             self.rect.y += self.speed
+            # Check boundary collision with the bottom edge
+            if current_map and self.rect.bottom >= current_height and not current_map.connections["south"]:
+                # Calculate line thickness
+                line_thickness = max(1, int(5 * (current_width / ORIGINAL_WIDTH)))
+                self.rect.bottom = current_height - line_thickness
         
         # Update original position to track where we are
         scale_factor_x = ORIGINAL_WIDTH / current_width

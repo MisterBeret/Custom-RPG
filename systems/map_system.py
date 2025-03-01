@@ -126,10 +126,13 @@ class MapArea:
         
     def update(self, player=None):
         """
-        Update all entities in this map area.
+        Update all entities in this map area and check for map transitions.
         
         Args:
             player: The player entity (optional)
+        
+        Returns:
+            tuple: (new_map, position) if transition should occur, None otherwise
         """
         # Get current screen dimensions
         if player:
@@ -138,14 +141,12 @@ class MapArea:
         # Update enemies
         self.enemies.update()
         
-        # If player is provided and in this map, check for edge transitions and collisions
+        # If player is provided and in this map, only check for map transitions
+        # (boundary checks now happen in player.update())
         if player and player in self.entities:
-            # Check for collisions with boundaries
-            self.check_boundary_collision(player, current_width, current_height)
-            
             # Check for map transitions
             return self.check_map_transition(player, current_width, current_height)
-            
+        
         return None
     
     def check_boundary_collision(self, player, screen_width, screen_height):
