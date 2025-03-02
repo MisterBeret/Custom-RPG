@@ -7,6 +7,7 @@ from constants import GREEN, SCREEN_WIDTH, SCREEN_HEIGHT, ORIGINAL_WIDTH, ORIGIN
 from systems.inventory import Inventory
 from systems.spell_system import SpellBook
 from systems.skill_system import SkillSet
+from systems.ultimate_system import UltimateSet
 from utils import scale_position, scale_dimensions
 
 class Player(Entity):
@@ -41,7 +42,7 @@ class Player(Entity):
         self.defense = 1  # Defense stat set to 1
         self.intelligence = 2  # Intelligence set to 2 for magic damage
         self.resilience = 1    # Resilience set to 1 to reduce magic damage
-        self.acc = 2  # New accuracy stat
+        self.acc = 2  # Accuracy stat
         self.spd = 5  # Speed determines turn order
         self.defending = False
         
@@ -53,6 +54,9 @@ class Player(Entity):
 
         # Skill set
         self.skillset = SkillSet()
+
+        # Ultimate abilities
+        self.ultimates = UltimateSet()
     
     def update_scale(self, current_width, current_height):
         """
@@ -285,6 +289,54 @@ class Player(Entity):
         
         return False, f"Couldn't cast {spell_name} effectively."
         
+    def use_ultimate(self, ultimate_name, target=None):
+        """
+        Use an ultimate ability.
+        
+        Args:
+            ultimate_name: The name of the ultimate to use
+            target: The target of the ultimate (if applicable)
+            
+        Returns:
+            tuple: (bool, str) - Success flag and result message
+        """
+        # Get the ultimate data
+        ultimate = self.ultimates.get_ultimate(ultimate_name)
+        if not ultimate:
+            return False, f"You don't know the ultimate {ultimate_name}!"
+        
+        # Check if the ultimate is available for use
+        if not ultimate.available:
+            return False, f"{ultimate_name} has already been used! Rest to restore it."
+        
+        # Apply the ultimate effect based on type
+        if ultimate.effect_type == "damage" and target:
+            # Calculate damage with power multiplier
+            damage = int(self.attack * ultimate.power_multiplier)
+            
+            # Apply damage to target
+            target.take_damage(damage)
+            
+            # Mark as used
+            ultimate.available = False
+            
+            # Return result
+            if target.is_defeated():
+                return True, f"Used {ultimate_name}! Dealt a massive {damage} damage! Enemy defeated!"
+            else:
+                return True, f"Used {ultimate_name}! Dealt a massive {damage} damage!"
+        
+        # Add more ultimate effect types here as needed
+        
+        return False, f"Couldn't use {ultimate_name} effectively."
+        
+    def rest(self):
+        """
+        Rest to restore ultimate abilities and potentially other resources.
+        """
+        # Restore all ultimates
+        self.ultimates.rest()
+    
     def gain_experience(self, amount):
         """
         Add experience to the player and check for level up.
@@ -310,9 +362,7 @@ class Player(Entity):
         """
         self.level += 1
         self.max_hp += 2
-        self.hp = self.max_hp  # Restore HP on level up
         self.max_sp += 1
-        self.sp = self.max_sp  # Restore SP on level up
         self.attack += 1
         
         # Every 2 levels, increase defense and intelligence

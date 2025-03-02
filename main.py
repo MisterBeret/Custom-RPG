@@ -237,6 +237,35 @@ def handle_input(event, state_manager, battle_system, player, collided_enemy,
                     # Also exit skill menu with ESCAPE key
                     elif event.key == pygame.K_ESCAPE:
                         battle_system.in_skill_menu = False
+                
+                # Handle ultimate menu navigation if active
+                elif battle_system.in_ultimate_menu:
+                    # Get ultimates list
+                    ultimate_options = player.ultimates.get_ultimate_names() + ["BACK"]
+                    
+                    if event.key == pygame.K_UP:
+                        battle_system.selected_ultimate_option = (battle_system.selected_ultimate_option - 1) % len(ultimate_options)
+                    elif event.key == pygame.K_DOWN:
+                        battle_system.selected_ultimate_option = (battle_system.selected_ultimate_option + 1) % len(ultimate_options)
+                    elif event.key == pygame.K_RETURN or event.key == pygame.K_SPACE:
+                        selected_ultimate = ultimate_options[battle_system.selected_ultimate_option]
+                        
+                        if selected_ultimate == "BACK":
+                            # Return to main battle menu
+                            battle_system.in_ultimate_menu = False
+                        else:
+                            # Try to use the ultimate
+                            success = battle_system.use_ultimate(selected_ultimate)
+                            if not success:
+                                # If use failed, stay in ultimate menu (message already set)
+                                pass
+                            else:
+                                # Return to battle screen after successful use
+                                battle_system.in_ultimate_menu = False
+                    
+                    # Also exit ultimate menu with ESCAPE key
+                    elif event.key == pygame.K_ESCAPE:
+                        battle_system.in_ultimate_menu = False
 
                 # Handle regular battle options when not in spell or skill menu
                 elif battle_system.turn == 0 and not battle_system.in_spell_menu:  # Player's turn and not in spell menu
@@ -292,8 +321,9 @@ def handle_input(event, state_manager, battle_system, player, collided_enemy,
                                 battle_system.in_skill_menu = True
                                 battle_system.selected_skill_option = 0
                             elif selected_action == "ULTIMATE":
-                                # Placeholder for ULTIMATE (not yet implemented)
-                                battle_system.set_message("Ultimate abilities not yet implemented.")
+                                # Enter the ultimate selection menu
+                                battle_system.in_ultimate_menu = True
+                                battle_system.selected_ultimate_option = 0
                             elif selected_action == "STATUS":
                                 # Placeholder for STATUS (not yet implemented)
                                 battle_system.set_message("Status screen not yet implemented.")

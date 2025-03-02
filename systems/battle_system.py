@@ -94,6 +94,13 @@ class BattleSystem:
         self.skill_animation_duration = ACTION_DELAY_DURATION  # Reuse action delay for skills
         self.current_skill = None
         
+        # Ultimate system additions
+        self.in_ultimate_menu = False
+        self.selected_ultimate_option = 0
+        self.player_using_ultimate = False
+        self.ultimate_animation_duration = SPELL_ANIMATION_DURATION  # Make ultimates as flashy as spells
+        self.current_ultimate = None
+        
     def set_text_speed(self, text_speed_setting):
         """
         Set the text speed based on the given setting.
@@ -231,10 +238,19 @@ class BattleSystem:
                 self.animation_timer = 0
                 self.set_message("You tried to flee!")
                 
-            # Other actions (SKILL, ULTIMATE, STATUS) will be implemented later
-            # For now, they just display a message
-            elif action in ["SKILL", "ULTIMATE", "STATUS"]:
-                self.set_message(f"{action} system not yet implemented.")
+            # Handle SKILL action
+            elif action == "SKILL":
+                # Skill system is implemented now
+                pass
+                
+            # Handle ULTIMATE action
+            elif action == "ULTIMATE":
+                # Ultimate system is now implemented
+                pass
+                
+            # STATUS is still not implemented
+            elif action == "STATUS":
+                self.set_message("STATUS system not yet implemented.")
                 self.action_processing = False
 
     def cast_spell(self, spell_name):
@@ -353,6 +369,155 @@ class BattleSystem:
         
         return False
 
+    def use_ultimate(self, ultimate_name):
+        """
+        Process using an ultimate ability.
+        
+        Args:
+            ultimate_name: The name of the ultimate to use
+            
+        Returns:
+            bool: True if ultimate was used successfully, False otherwise
+        """
+        if self.turn == 0 and not self.action_processing:
+            # Get the ultimate data
+            ultimate = self.player.ultimates.get_ultimate(ultimate_name)
+            if not ultimate:
+                self.set_message(f"You don't know the ultimate {ultimate_name}!")
+                return False
+                
+            # Check if the ultimate is available
+            if not ultimate.available:
+                self.set_message(f"{ultimate_name} has already been used! Rest to restore it.")
+                return False
+                
+            # Set the current ultimate for animation
+            self.current_ultimate = ultimate
+            self.action_processing = True
+                
+            # Start ultimate animation
+            self.player_using_ultimate = True
+            self.animation_timer = 0
+                
+            # Handle ultimate effects
+            if ultimate.effect_type == "damage":
+                # Calculate damage with power multiplier
+                damage = int(self.player.attack * ultimate.power_multiplier)
+                
+                # Apply damage to enemy
+                self.enemy.take_damage(damage)
+                
+                # Mark as used
+                ultimate.available = False
+                
+                # Store the message for later display after animation
+                if self.enemy.is_defeated():
+                    self.pending_message = f"Used {ultimate_name}! Dealt a massive {damage} damage! Enemy defeated!"
+                    self.pending_victory = True
+                else:
+                    self.pending_message = f"Used {ultimate_name}! Dealt a massive {damage} damage!"
+                
+            # Add more ultimate effect types here as needed
+                
+            return True
+        
+        return False
+
+    def _draw_ultimate_menu(self, screen, font, small_font):
+        """
+        Draw the ultimate ability selection menu with scaling support.
+        
+        Args:
+            screen: The pygame surface to draw on
+            font: The main font to use
+            small_font: The smaller font for details
+        """
+        from utils import scale_position, scale_dimensions
+        from constants import RED, GREEN
+        
+        # Get current screen dimensions
+        current_width, current_height = screen.get_size()
+        original_width, original_height = 800, 600  # Original design resolution
+        
+        # Scale menu dimensions and position
+        ultimate_box_width, ultimate_box_height = scale_dimensions(
+            250, 150, original_width, original_height, current_width, current_height
+        )
+        ultimate_box_x, ultimate_box_y = scale_position(
+            20, SCREEN_HEIGHT - 150 - 5, original_width, original_height, current_width, current_height
+        )
+        
+        # Draw box background and border
+        pygame.draw.rect(screen, BLACK, (ultimate_box_x, ultimate_box_y, ultimate_box_width, ultimate_box_height))
+        border_width = max(1, int(2 * (current_width / original_width)))
+        pygame.draw.rect(screen, RED, (ultimate_box_x, ultimate_box_y, ultimate_box_width, ultimate_box_height), border_width)
+        
+        # Draw "Ultimate" header
+        ultimate_text = font.render("Ultimate", True, RED)
+        header_x = ultimate_box_x + (ultimate_box_width // 2) - (ultimate_text.get_width() // 2)
+        header_y = ultimate_box_y + int(10 * (current_height / original_height))
+        screen.blit(ultimate_text, (header_x, header_y))
+        
+        # Get ultimate list from player's ultimates
+        ultimate_names = self.player.ultimates.get_ultimate_names()
+        # Add "BACK" option at the end
+        options = ultimate_names + ["BACK"]
+        
+        # Scale text positions
+        option_x = ultimate_box_x + int(30 * (current_width / original_width))
+        option_y_base = ultimate_box_y + int(40 * (current_height / original_height))
+        option_line_height = int(25 * (current_height / original_height))
+        status_x = ultimate_box_x + int(150 * (current_width / original_width))
+        
+        # Draw each ultimate with availability status
+        for i, ultimate_name in enumerate(options):
+            option_y = option_y_base + i * option_line_height
+            
+            if ultimate_name == "BACK":
+                # Draw BACK option
+                if i == self.selected_ultimate_option:
+                    option_text = font.render(f"> {ultimate_name}", True, WHITE)
+                else:
+                    option_text = font.render(f"  {ultimate_name}", True, GRAY)
+                screen.blit(option_text, (option_x, option_y))
+            else:
+                # Get the ultimate data
+                ultimate = self.player.ultimates.get_ultimate(ultimate_name)
+                
+                # Determine text color based on whether ultimate is available
+                is_available = ultimate.available
+                
+                if i == self.selected_ultimate_option:
+                    # Selected ultimate
+                    if is_available:
+                        name_color = WHITE  # Can use
+                    else:
+                        name_color = RED    # Can't use (already used)
+                    option_text = font.render(f"> {ultimate_name}", True, name_color)
+                else:
+                    # Unselected ultimate
+                    if is_available:
+                        name_color = GRAY   # Can use
+                    else:
+                        name_color = RED    # Can't use (already used)
+                    option_text = font.render(f"  {ultimate_name}", True, name_color)
+                
+                # Draw ultimate name
+                screen.blit(option_text, (option_x, option_y))
+                
+                # Draw availability status
+                status_text = small_font.render("READY" if is_available else "USED", True, 
+                                            GREEN if is_available else RED)
+                screen.blit(status_text, (status_x, option_y))
+        
+        # Draw ultimate description for selected ultimate
+        if self.selected_ultimate_option < len(ultimate_names):
+            ultimate = self.player.ultimates.get_ultimate(options[self.selected_ultimate_option])
+            if ultimate:
+                desc_y = option_y_base + len(options) * option_line_height
+                desc_text = small_font.render(ultimate.description, True, WHITE)
+                screen.blit(desc_text, (option_x, desc_y))
+    
     def set_message(self, message):
         """
         Set a new battle message and reset text animation.
@@ -482,6 +647,40 @@ class BattleSystem:
                 self.turn = 1
                 self.enemy_turn_processed = False
 
+                self.action_processing = False
+        
+        # Handle player ultimate animation
+        elif self.player_using_ultimate:
+            self.animation_timer += 1
+            if self.animation_timer >= self.ultimate_animation_duration:
+                self.player_using_ultimate = False
+                self.animation_timer = 0
+                self.current_ultimate = None
+                
+                # Now that animation is complete, display the message
+                self.set_message(self.pending_message)
+                
+                # If enemy was defeated, end battle and award XP
+                if self.pending_victory:
+                    # Award XP to player
+                    xp_gained = self.enemy.xp
+                    self.player.gain_experience(xp_gained)
+                    
+                    # Add XP message to the log
+                    self.message_log.append(f"You gained {xp_gained} XP!")
+                    if len(self.message_log) > self.max_log_size:
+                        self.message_log.pop(0)
+                    
+                    self.battle_over = True
+                    self.victory = True
+                else:
+                    # Reset player's defense multiplier at end of turn if defending
+                    self.player.end_turn()
+                    
+                    # Switch to enemy's turn
+                    self.turn = 1
+                    self.enemy_turn_processed = False
+                
                 self.action_processing = False
         
         # Handle enemy attack animation
@@ -660,6 +859,53 @@ class BattleSystem:
                     circle_radius = int(10 * min(current_width / original_width, current_height / original_height))
                     pygame.draw.circle(screen, RED, (int(spell_x), int(spell_y)), circle_radius)
                 
+                # For drawing Ultimate effects, after any spell effect drawing and before the player character drawing:
+                elif self.player_using_ultimate and self.current_ultimate and self.current_ultimate.effect_type == "damage":
+                    # For ultimate attacks, draw multiple projectiles and add flashes
+                    ultimate_progress = self.animation_timer / self.ultimate_animation_duration
+                    
+                    # Draw 5 projectiles for the 5x damage multiplier
+                    for i in range(5):
+                        # Calculate offset based on index to create fan-like pattern
+                        angle_offset = (i - 2) * 10  # -20, -10, 0, 10, 20 degrees
+                        # Convert to radians
+                        angle_rad = angle_offset * (3.14159 / 180)
+                        
+                        # Calculate x and y offsets based on angle
+                        x_offset = 300 * ultimate_progress
+                        y_offset = x_offset * pygame.math.Vector2(0, 1).rotate(angle_offset).y
+                        
+                        # Scale projectile position
+                        proj_x, proj_y = scale_position(
+                            self.player_pos[0] - x_offset,
+                            self.player_pos[1] + 35 + y_offset,
+                            original_width, original_height,
+                            current_width, current_height
+                        )
+                        
+                        # Scale projectile size (larger than normal attacks)
+                        proj_radius = int(12 * min(current_width / original_width, current_height / original_height))
+                        
+                        # Use bright red for ultimate projectiles
+                        proj_color = (255, 0, 0)
+                        pygame.draw.circle(screen, proj_color, (int(proj_x), int(proj_y)), proj_radius)
+                    
+                    # Draw bright flashes around the player
+                    if ultimate_progress < 0.3:  # Only during first third of animation
+                        flash_radius = int(40 * (1 - ultimate_progress/0.3) * min(current_width / original_width, 
+                                                                                    current_height / original_height))
+                        flash_x, flash_y = scale_position(
+                            self.player_pos[0] + player_size[0]/2,
+                            self.player_pos[1] + player_size[1]/2,
+                            original_width, original_height,
+                            current_width, current_height
+                        )
+                        
+                        # Draw semi-transparent flash
+                        flash_surf = pygame.Surface((flash_radius*2, flash_radius*2), pygame.SRCALPHA)
+                        pygame.draw.circle(flash_surf, (255, 0, 0, 128), (flash_radius, flash_radius), flash_radius)
+                        screen.blit(flash_surf, (flash_x - flash_radius, flash_y - flash_radius))
+                
                 # Draw player character
                 pygame.draw.rect(screen, GREEN, 
                                 (player_pos_scaled[0] + player_offset_x, 
@@ -765,13 +1011,15 @@ class BattleSystem:
                 screen.blit(message_text, (message_x, message_y))
         
         # Draw battle options or spell/skill menu
-        if self.turn == 0 and not self.battle_over and not self.player_attacking and not self.enemy_attacking and not self.player_fleeing and not self.player_casting and not self.player_using_skill and self.action_delay == 0:
+        if self.turn == 0 and not self.battle_over and not self.player_attacking and not self.enemy_attacking and not self.player_fleeing and not self.player_casting and not self.player_using_skill and not self.player_using_ultimate and self.action_delay == 0:
             # Only display UI when the text is fully displayed
             if self.message_index >= len(self.full_message):
                 if self.in_spell_menu:
                     self._draw_spell_menu(screen, font, small_font)
                 elif self.in_skill_menu:
                     self._draw_skill_menu(screen, font, small_font)
+                elif self.in_ultimate_menu:
+                    self._draw_ultimate_menu(screen, font, small_font)
                 else:
                     self._draw_battle_options(screen, font)
                     
