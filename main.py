@@ -214,22 +214,62 @@ def handle_input(event, state_manager, battle_system, player, collided_enemy,
                     # Only accept inputs when text is fully displayed
                     if battle_system.message_index >= len(battle_system.full_message):
                         if event.key == pygame.K_UP:
-                            battle_system.selected_option = (battle_system.selected_option - 1) % len(battle_system.battle_options)
+                            # Move up in the same column with wrap-around
+                            if battle_system.selected_option >= 4:  # Right column
+                                # Move up in right column (wrap to bottom if at top)
+                                current_position = battle_system.selected_option - 4
+                                new_position = (current_position - 1) % 4
+                                battle_system.selected_option = 4 + new_position
+                            else:  # Left column
+                                # Move up in left column (wrap to bottom if at top)
+                                battle_system.selected_option = (battle_system.selected_option - 1) % 4
                         elif event.key == pygame.K_DOWN:
-                            battle_system.selected_option = (battle_system.selected_option + 1) % len(battle_system.battle_options)
+                            # Move down in the same column with wrap-around
+                            if battle_system.selected_option >= 4:  # Right column
+                                # Move down in right column
+                                current_position = battle_system.selected_option - 4
+                                new_position = (current_position + 1) % 4
+                                battle_system.selected_option = 4 + new_position
+                            else:  # Left column
+                                # Move down in left column
+                                battle_system.selected_option = (battle_system.selected_option + 1) % 4
+                        elif event.key == pygame.K_LEFT:
+                            # Move to left column from right, or wrap around to right column from left
+                            if battle_system.selected_option >= 4:  # Right column to left
+                                battle_system.selected_option -= 4
+                            else:  # Left column to right (wrap around)
+                                battle_system.selected_option += 4
+                        elif event.key == pygame.K_RIGHT:
+                            # Move to right column from left, or wrap around to left column from right
+                            if battle_system.selected_option < 4:  # Left column to right
+                                battle_system.selected_option += 4
+                            else:  # Right column to left (wrap around)
+                                battle_system.selected_option -= 4
                         elif event.key == pygame.K_RETURN or event.key == pygame.K_SPACE:
                             selected_action = battle_system.battle_options[battle_system.selected_option]
                             
-                            # Handle the MAGIC action
+                            # Handle the actions
                             if selected_action == "MAGIC":
                                 battle_system.in_spell_menu = True
                                 battle_system.selected_spell_option = 0
-                            # Handle the ITEMS action
-                            elif selected_action == "ITEMS":
+                            elif selected_action == "ITEM":
                                 state_manager.change_state(INVENTORY)
-                                selected_inventory_option = 0  # Reset selection
-                                inventory_mode = "battle"  # Set mode for context
+                                selected_inventory_option = 0
+                                inventory_mode = "battle"
+                            elif selected_action == "MOVE":
+                                # For now, MOVE uses the same functionality as RUN
+                                battle_system.process_action("RUN")
+                            elif selected_action == "SKILL":
+                                # Placeholder for SKILL (not yet implemented)
+                                battle_system.set_message("Skill system not yet implemented.")
+                            elif selected_action == "ULTIMATE":
+                                # Placeholder for ULTIMATE (not yet implemented)
+                                battle_system.set_message("Ultimate abilities not yet implemented.")
+                            elif selected_action == "STATUS":
+                                # Placeholder for STATUS (not yet implemented)
+                                battle_system.set_message("Status screen not yet implemented.")
                             else:
+                                # ATTACK and DEFEND remain the same
                                 battle_system.process_action(selected_action)
                     else:
                         # If message is still scrolling, pressing any key will display it immediately

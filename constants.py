@@ -73,7 +73,10 @@ SPELL_ANIMATION_DURATION = 30  # Duration for spell casting animations
 # Menu options
 PAUSE_OPTIONS = ["ITEMS", "SETTINGS", "CLOSE"] 
 SETTINGS_OPTIONS = ["TEXT SPEED", "RESOLUTION", "DISPLAY MODE", "BACK"]
-BATTLE_OPTIONS = ["ATTACK", "DEFEND", "MAGIC", "ITEMS", "RUN"]  
+BATTLE_OPTIONS = [
+    "MOVE", "ATTACK", "DEFEND", "ITEM",     # Left column
+    "SKILL", "MAGIC", "ULTIMATE", "STATUS"  # Right column
+]
 
 # Message log size
 MAX_LOG_SIZE = 3  # Number of messages to keep in the battle log

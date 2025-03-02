@@ -182,7 +182,7 @@ class BattleSystem:
         Process a player action.
         
         Args:
-            action: The action to process ("ATTACK", "DEFEND", "MAGIC", "ITEMS", or "RUN")
+            action: The action to process ("ATTACK", "DEFEND", "MOVE", "SKILL", etc.)
         """
         if self.turn == 0 and not self.action_processing:  # Player's turn and not already processing
             self.action_processing = True
@@ -213,23 +213,22 @@ class BattleSystem:
             elif action == "DEFEND":
                 self.player.defend()
                 self.set_message("You're defending! Incoming damage reduced and evasion increased!")
-                #Reset the action delay timer
+                # Reset the action delay timer
                 self.action_delay = 0
-                #Make sure we're setting action_processing to True
+                # Make sure we're setting action_processing to True
                 self.action_processing = True
                 
-            elif action == "MAGIC":
-                # Open magic menu
-                self.in_spell_menu = True
-                self.selected_spell_option = 0
-                self.set_message("Select a spell to cast:")
-                self.action_processing = False  # Allow spell selection
-                
             elif action == "RUN":
-                # Start flee animation
+                # Start flee animation (this will be replaced by MOVE later)
                 self.player_fleeing = True
                 self.animation_timer = 0
                 self.set_message("You tried to flee!")
+                
+            # Other actions (SKILL, ULTIMATE, STATUS) will be implemented later
+            # For now, they just display a message
+            elif action in ["SKILL", "ULTIMATE", "STATUS"]:
+                self.set_message(f"{action} system not yet implemented.")
+                self.action_processing = False
 
     def cast_spell(self, spell_name):
         """
@@ -798,7 +797,7 @@ class BattleSystem:
                 
     def _draw_battle_options(self, screen, font):
         """
-        Draw the main battle options menu with scaling support.
+        Draw the main battle options menu in a two-column layout.
         
         Args:
             screen: The pygame surface to draw on
@@ -812,10 +811,10 @@ class BattleSystem:
         
         # Scale dimensions and position
         options_box_width, options_box_height = scale_dimensions(
-            200, 120, original_width, original_height, current_width, current_height
+            300, 160, original_width, original_height, current_width, current_height
         )
         options_box_x, options_box_y = scale_position(
-            20, SCREEN_HEIGHT - 120 - 5, original_width, original_height, current_width, current_height
+            20, SCREEN_HEIGHT - 160 - 5, original_width, original_height, current_width, current_height
         )
         
         # Draw box background and border
@@ -830,20 +829,35 @@ class BattleSystem:
         screen.blit(actions_text, (header_x, header_y))
         
         # Scale text positions
-        option_x = options_box_x + int(30 * (current_width / original_width))
+        left_column_x = options_box_x + int(30 * (current_width / original_width))
+        right_column_x = options_box_x + int(160 * (current_width / original_width))
         option_y_base = options_box_y + int(40 * (current_height / original_height))
-        option_line_height = int(20 * (current_height / original_height))
+        option_line_height = int(25 * (current_height / original_height))
         
-        # Draw battle options
-        for i, option in enumerate(self.battle_options):
+        # Draw battle options in two columns
+        # Left column (first 4 options)
+        for i in range(4):
             option_y = option_y_base + i * option_line_height
+            option = self.battle_options[i]
             
             if i == self.selected_option:
                 # Highlight selected option
                 option_text = font.render(f"> {option}", True, WHITE)
             else:
                 option_text = font.render(f"  {option}", True, GRAY)
-            screen.blit(option_text, (option_x, option_y))
+            screen.blit(option_text, (left_column_x, option_y))
+        
+        # Right column (next 4 options)
+        for i in range(4, 8):
+            option_y = option_y_base + (i - 4) * option_line_height
+            option = self.battle_options[i]
+            
+            if i == self.selected_option:
+                # Highlight selected option
+                option_text = font.render(f"> {option}", True, WHITE)
+            else:
+                option_text = font.render(f"  {option}", True, GRAY)
+            screen.blit(option_text, (right_column_x, option_y))
                 
     def _draw_player_stat_window(self, screen, font, small_font):
         """
