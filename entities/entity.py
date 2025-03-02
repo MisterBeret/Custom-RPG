@@ -80,12 +80,15 @@ class Entity(pygame.sprite.Sprite):
         self.rect.x = scaled_pos[0]
         self.rect.y = scaled_pos[1]
         
-    def take_damage(self, amount):
+    def take_damage(self, amount, damage_type="physical", attacker=None, battle_system=None):
         """
         Apply damage to the entity.
         
         Args:
             amount (int): Amount of damage to take
+            damage_type (str): Type of damage (physical, magical, etc.)
+            attacker: The entity that caused the damage (for passives)
+            battle_system: The battle system reference (for passives)
             
         Returns:
             bool: True if entity was defeated, False otherwise

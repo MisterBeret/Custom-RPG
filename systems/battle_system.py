@@ -100,6 +100,15 @@ class BattleSystem:
         self.player_using_ultimate = False
         self.ultimate_animation_duration = SPELL_ANIMATION_DURATION  # Make ultimates as flashy as spells
         self.current_ultimate = None
+
+        # Passive system additions
+        self.counter_may_trigger = False
+        self.counter_triggered = False
+        self.counter_message = ""
+        self.counter_damage = 0
+
+        self.player_countering = False  # Flag to track counter attack animation
+        self.counter_animation_timer = 0  # Separate timer for counter animations
         
     def set_text_speed(self, text_speed_setting):
         """
@@ -562,6 +571,43 @@ class BattleSystem:
         if self.message_index < len(self.full_message):
             return
             
+        # Handle counter passive effect after enemy attack message is shown
+        if self.counter_triggered and self.turn == 1:
+            # Start counter-attack animation instead of immediately showing message
+            self.player_countering = True
+            self.counter_animation_timer = 0
+            self.counter_triggered = False
+            return
+        
+        # Handle counter-attack animation
+        elif self.player_countering:
+            self.counter_animation_timer += 1
+            if self.counter_animation_timer >= self.animation_duration:
+                self.player_countering = False
+                self.counter_animation_timer = 0
+                
+                # Now that counter animation is complete, display the message
+                self.set_message(self.counter_message)
+                
+                # Check if enemy was defeated by the counter
+                if self.enemy.is_defeated():
+                    # Award XP to player
+                    xp_gained = self.enemy.xp
+                    self.player.gain_experience(xp_gained)
+                    
+                    # Add XP message to the log
+                    self.message_log.append(f"You gained {xp_gained} XP!")
+                    if len(self.message_log) > self.max_log_size:
+                        self.message_log.pop(0)
+                    
+                    self.battle_over = True
+                    self.victory = True
+                else:
+                    # Switch to player's turn after counter effect
+                    self.turn = 0
+                    self.action_processing = False
+            return
+
         # Handle player attack animation
         if self.player_attacking:
             self.animation_timer += 1
@@ -692,22 +738,41 @@ class BattleSystem:
                 
                 # Apply damage to player (only if attack didn't miss)
                 if "missed" not in self.pending_message:
-                    self.player.take_damage(self.pending_damage)
-                
-                self.set_message(self.pending_message)
+                    # We pass the battle system and enemy for potential passive triggers
+                    passive_triggered, passive_message = self.player.take_damage(
+                        self.pending_damage, 
+                        damage_type="physical", 
+                        attacker=self.enemy, 
+                        battle_system=self
+                    )
+                    
+                    # Display the standard attack message first
+                    self.set_message(self.pending_message)
+                    
+                    # If a passive ability was triggered, store that info for display after the regular message
+                    if passive_triggered:
+                        self.counter_triggered = True
+                        self.counter_message = passive_message
+                else:
+                    # If the attack missed, just show the regular message
+                    self.set_message(self.pending_message)
+                    self.counter_triggered = False
                 
                 # Check if player was defeated
                 if self.player.is_defeated():
                     self.set_message(f"Enemy attacked for {self.pending_damage} damage! You were defeated!")
                     self.battle_over = True
+                    self.counter_triggered = False
                 else:
                     # Reset enemy's defense multiplier at end of turn if defending
                     self.enemy.end_turn()
                     
-                    # Switch back to player turn
-                    self.turn = 0
-
-                    self.action_processing = False
+                    # If no counter was triggered, proceed to player's turn
+                    if not self.counter_triggered:
+                        # Switch back to player turn
+                        self.turn = 0
+                        self.action_processing = False
+                    # If counter was triggered, we'll keep action_processing true and handle the counter effect
         
         # Handle fleeing animation
         elif self.player_fleeing:
@@ -767,9 +832,13 @@ class BattleSystem:
                     self.pending_message = f"Enemy attacked! Your defense reduced damage from {self.original_damage} to {self.pending_damage}!"
                 else:
                     self.pending_message = f"Enemy attacked for {self.pending_damage} damage!"
+                    
+                # Store whether a counter passive might trigger
+                self.counter_may_trigger = True
             else:
                 # Attack missed
                 self.pending_damage = 0
+                self.counter_may_trigger = False
                 # Prepare message based on why it might have missed
                 if self.player.defending:
                     self.pending_message = "Enemy's attack missed! Your defensive stance helped you evade!"
@@ -796,6 +865,15 @@ class BattleSystem:
         # Calculate animation offsets
         player_offset_x = 0
         enemy_offset_x = 0
+
+        if self.player_attacking or self.player_countering:
+            # Move player toward enemy during first half, then back
+            # Player moves left (-) toward enemy
+            animation_timer = self.animation_timer if self.player_attacking else self.counter_animation_timer
+            if animation_timer < self.animation_duration / 2:
+                player_offset_x = int(-30 * (animation_timer / (self.animation_duration / 2)))
+            else:
+                player_offset_x = int(-30 * (1 - (animation_timer - self.animation_duration / 2) / (self.animation_duration / 2)))
         
         if self.player_attacking:
             # Move player toward enemy during first half, then back

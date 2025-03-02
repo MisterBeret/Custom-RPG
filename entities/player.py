@@ -8,6 +8,7 @@ from systems.inventory import Inventory
 from systems.spell_system import SpellBook
 from systems.skill_system import SkillSet
 from systems.ultimate_system import UltimateSet
+from systems.passive_system import PassiveSet
 from utils import scale_position, scale_dimensions
 
 class Player(Entity):
@@ -57,6 +58,9 @@ class Player(Entity):
 
         # Ultimate abilities
         self.ultimates = UltimateSet()
+        
+        # Passive abilities
+        self.passives = PassiveSet()
     
     def update_scale(self, current_width, current_height):
         """
@@ -170,16 +174,37 @@ class Player(Entity):
         self.original_x = self.rect.x * scale_factor_x
         self.original_y = self.rect.y * scale_factor_y
         
-    def take_damage(self, amount):
+    def take_damage(self, amount, damage_type="physical", attacker=None, battle_system=None):
         """
-        Apply damage to the player, accounting for defense.
+        Apply damage to the player, accounting for defense and potentially triggering passives.
         
         Args:
             amount (int): Amount of damage to take
+            damage_type (str): Type of damage (physical, magical, etc.)
+            attacker: The entity that caused the damage (for passives)
+            battle_system: The battle system reference (for passives)
+            
+        Returns:
+            tuple: (bool, str) - Whether a passive was triggered and any resulting message
         """
-        # Defense multiplier is handled in battle_system calculation now
-        # Just call the parent class method
+        # Apply damage using parent method
         super().take_damage(amount)
+        
+        # Check if we should trigger any passives
+        passive_triggered = False
+        passive_message = ""
+        
+        # Only try to trigger "on_hit" passives if we were actually hit (damage > 0)
+        # and if we have necessary context (attacker and battle_system)
+        if amount > 0 and damage_type == "physical" and attacker and battle_system:
+            passive_triggered, passive_message = self.passives.trigger_passive(
+                trigger_type="on_hit",
+                battle_system=battle_system,
+                entity=self,
+                target=attacker
+            )
+            
+        return passive_triggered, passive_message
         
     def defend(self):
         """

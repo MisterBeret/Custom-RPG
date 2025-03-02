@@ -6,6 +6,7 @@ import random
 from entities.entity import Entity
 from constants import RED, SCREEN_WIDTH, SCREEN_HEIGHT, ORIGINAL_WIDTH, ORIGINAL_HEIGHT
 from utils import scale_position, scale_dimensions
+from systems.passive_system import PassiveSet
 
 class Enemy(Entity):
     """
@@ -35,6 +36,10 @@ class Enemy(Entity):
         self.xp = 5   # XP awarded to player upon defeat
         self.defending = False
         self.defense_multiplier = 1  # New property to track defense multiplier
+
+        # Adds potential for enemy passives
+        self.passives = PassiveSet(add_defaults=False)
+
         
     def update(self):
         """
@@ -49,6 +54,38 @@ class Enemy(Entity):
         """
         self.defending = True
         
+    def take_damage(self, amount, damage_type="physical", attacker=None, battle_system=None):
+        """
+        Apply damage to the enemy, with the potential to trigger passive abilities.
+        
+        Args:
+            amount (int): Amount of damage to take
+            damage_type (str): Type of damage (physical, magical, etc.)
+            attacker: The entity that caused the damage (for passives)
+            battle_system: The battle system reference (for passives)
+            
+        Returns:
+            tuple: (bool, str) - Whether a passive was triggered and any resulting message
+        """
+        # Apply damage using parent method
+        super().take_damage(amount)
+        
+        # Check if we should trigger any passives
+        passive_triggered = False
+        passive_message = ""
+        
+        # Only try to trigger "on_hit" passives if we were actually hit (damage > 0)
+        # and if we have necessary context (attacker and battle_system)
+        if amount > 0 and damage_type == "physical" and attacker and battle_system:
+            passive_triggered, passive_message = self.passives.trigger_passive(
+                trigger_type="on_hit",
+                battle_system=battle_system,
+                entity=self,
+                target=attacker
+            )
+            
+        return passive_triggered, passive_message
+    
     def end_turn(self):
         """
         End the turn and reset temporary stat changes.
