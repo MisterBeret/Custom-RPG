@@ -6,6 +6,7 @@ from entities.entity import Entity
 from constants import GREEN, SCREEN_WIDTH, SCREEN_HEIGHT, ORIGINAL_WIDTH, ORIGINAL_HEIGHT
 from systems.inventory import Inventory
 from systems.spell_system import SpellBook
+from systems.skill_system import SkillSet
 from utils import scale_position, scale_dimensions
 
 class Player(Entity):
@@ -49,6 +50,9 @@ class Player(Entity):
         
         # Spell book
         self.spellbook = SpellBook()
+
+        # Skill set
+        self.skillset = SkillSet()
     
     def update_scale(self, current_width, current_height):
         """
@@ -185,6 +189,44 @@ class Player(Entity):
         """
         if self.defending:
             self.defending = False
+    
+    def use_skill(self, skill_name, target=None):
+        """
+        Use a skill from the skillset.
+        
+        Args:
+            skill_name: The name of the skill to use
+            target: The target of the skill effect (if applicable)
+            
+        Returns:
+            tuple: (bool, str) - Success flag and result message
+        """
+        # Get the skill data
+        skill = self.skillset.get_skill(skill_name)
+        if not skill:
+            return False, f"You don't know the skill {skill_name}!"
+        
+        # Check if player has enough resources to use the skill
+        if skill.cost_type == "sp" and self.sp < skill.sp_cost:
+            return False, f"Not enough SP to use {skill_name}!"
+        elif skill.cost_type == "hp" and self.hp <= skill.hp_cost:  # Don't allow HP to reach 0
+            return False, f"Not enough HP to use {skill_name}!"
+        elif skill.cost_type == "both" and (self.sp < skill.sp_cost or self.hp <= skill.hp_cost):
+            return False, f"Not enough resources to use {skill_name}!"
+        
+        # Apply resource costs
+        if skill.sp_cost > 0:
+            self.use_sp(skill.sp_cost)
+        if skill.hp_cost > 0:
+            self.take_damage(skill.hp_cost)
+        
+        # Apply the skill effect based on type
+        if skill.effect_type == "analyze" and target:
+            return True, f"Used {skill_name}! {target.__class__.__name__} stats:\nHP: {target.hp}/{target.max_hp}\nATK: {target.attack}\nDEF: {target.defense}\nSPD: {target.spd}\nACC: {target.acc}\nRES: {target.resilience}"
+            
+        # Add more skill effect types here
+        
+        return False, f"Couldn't use {skill_name} effectively."
     
     def cast_spell(self, spell_name, target=None):
         """

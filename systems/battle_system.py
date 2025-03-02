@@ -12,7 +12,7 @@ from constants import (BLACK, WHITE, GREEN, RED, GRAY, SCREEN_WIDTH, SCREEN_HEIG
                       ATTACK_ANIMATION_DURATION, FLEE_ANIMATION_DURATION,
                       ACTION_DELAY_DURATION, SPELL_ANIMATION_DURATION, 
                       BATTLE_OPTIONS, MAX_LOG_SIZE,
-                      ORANGE, BLUE, DARK_BLUE, PURPLE)
+                      ORANGE, BLUE, DARK_BLUE, PURPLE, YELLOW)
 
 class BattleSystem:
     """
@@ -86,6 +86,13 @@ class BattleSystem:
         self.player_casting = False
         self.spell_animation_duration = SPELL_ANIMATION_DURATION
         self.current_spell = None
+
+        # Skill system additions
+        self.in_skill_menu = False
+        self.selected_skill_option = 0
+        self.player_using_skill = False
+        self.skill_animation_duration = ACTION_DELAY_DURATION  # Reuse action delay for skills
+        self.current_skill = None
         
     def set_text_speed(self, text_speed_setting):
         """
@@ -292,6 +299,59 @@ class BattleSystem:
             return True
         
         return False
+    
+    def use_skill(self, skill_name):
+        """
+        Process using a skill.
+        
+        Args:
+            skill_name: The name of the skill to use
+            
+        Returns:
+            bool: True if skill was used successfully, False otherwise
+        """
+        if self.turn == 0 and not self.action_processing:
+            # Get the skill data
+            skill = self.player.skillset.get_skill(skill_name)
+            if not skill:
+                self.set_message(f"You don't know the skill {skill_name}!")
+                return False
+                
+            # Check if player has enough resources to use the skill
+            if skill.cost_type == "sp" and self.player.sp < skill.sp_cost:
+                self.set_message(f"Not enough SP to use {skill_name}!")
+                return False
+            elif skill.cost_type == "hp" and self.player.hp <= skill.hp_cost:
+                self.set_message(f"Not enough HP to use {skill_name}!")
+                return False
+            elif skill.cost_type == "both" and (self.player.sp < skill.sp_cost or self.player.hp <= skill.hp_cost):
+                self.set_message(f"Not enough resources to use {skill_name}!")
+                return False
+                
+            # Set the current skill for animation
+            self.current_skill = skill
+            self.action_processing = True
+                
+            # Start skill animation
+            self.player_using_skill = True
+            self.animation_timer = 0
+                
+            # Apply resource costs
+            if skill.sp_cost > 0:
+                self.player.use_sp(skill.sp_cost)
+            if skill.hp_cost > 0:
+                self.player.take_damage(skill.hp_cost)
+                
+            # Handle skill effects
+            if skill.effect_type == "analyze":
+                # Store the message for later display after animation
+                self.pending_message = f"Used {skill_name}! {self.enemy.__class__.__name__} stats:\nHP: {self.enemy.hp}/{self.enemy.max_hp}\nATK: {self.enemy.attack}\nDEF: {self.enemy.defense}\nSPD: {self.enemy.spd}\nACC: {self.enemy.acc}\nRES: {self.enemy.resilience}"
+                
+            # Add more skill effect types here as needed
+                
+            return True
+        
+        return False
 
     def set_message(self, message):
         """
@@ -402,6 +462,26 @@ class BattleSystem:
                     self.turn = 1
                     self.enemy_turn_processed = False
                 
+                self.action_processing = False
+        
+        # Handle player skill animation
+        elif self.player_using_skill:
+            self.animation_timer += 1
+            if self.animation_timer >= self.skill_animation_duration:
+                self.player_using_skill = False
+                self.animation_timer = 0
+                self.current_skill = None
+                
+                # Now that animation is complete, display the message
+                self.set_message(self.pending_message)
+                
+                # Reset player's defense multiplier at end of turn if defending
+                self.player.end_turn()
+                
+                # Switch to enemy's turn
+                self.turn = 1
+                self.enemy_turn_processed = False
+
                 self.action_processing = False
         
         # Handle enemy attack animation
@@ -684,12 +764,14 @@ class BattleSystem:
                 message_text = font.render(message, True, GRAY)  # Older messages in gray
                 screen.blit(message_text, (message_x, message_y))
         
-        # Draw battle options or spell menu
-        if self.turn == 0 and not self.battle_over and not self.player_attacking and not self.enemy_attacking and not self.player_fleeing and not self.player_casting and self.action_delay == 0:
+        # Draw battle options or spell/skill menu
+        if self.turn == 0 and not self.battle_over and not self.player_attacking and not self.enemy_attacking and not self.player_fleeing and not self.player_casting and not self.player_using_skill and self.action_delay == 0:
             # Only display UI when the text is fully displayed
             if self.message_index >= len(self.full_message):
                 if self.in_spell_menu:
                     self._draw_spell_menu(screen, font, small_font)
+                elif self.in_skill_menu:
+                    self._draw_skill_menu(screen, font, small_font)
                 else:
                     self._draw_battle_options(screen, font)
                     
@@ -795,6 +877,111 @@ class BattleSystem:
                 desc_text = small_font.render(spell.description, True, WHITE)
                 screen.blit(desc_text, (option_x, desc_y))
                 
+    def _draw_skill_menu(self, screen, font, small_font):
+        """
+        Draw the skill selection menu with scaling support.
+        
+        Args:
+            screen: The pygame surface to draw on
+            font: The main font to use
+            small_font: The smaller font for details
+        """
+        from utils import scale_position, scale_dimensions
+        
+        # Get current screen dimensions
+        current_width, current_height = screen.get_size()
+        original_width, original_height = 800, 600  # Original design resolution
+        
+        # Scale menu dimensions and position
+        skill_box_width, skill_box_height = scale_dimensions(
+            250, 150, original_width, original_height, current_width, current_height
+        )
+        skill_box_x, skill_box_y = scale_position(
+            20, SCREEN_HEIGHT - 150 - 5, original_width, original_height, current_width, current_height
+        )
+        
+        # Draw box background and border
+        pygame.draw.rect(screen, BLACK, (skill_box_x, skill_box_y, skill_box_width, skill_box_height))
+        border_width = max(1, int(2 * (current_width / original_width)))
+        pygame.draw.rect(screen, YELLOW, (skill_box_x, skill_box_y, skill_box_width, skill_box_height), border_width)
+        
+        # Draw "Skills" header
+        skills_text = font.render("Skills", True, YELLOW)
+        header_x = skill_box_x + (skill_box_width // 2) - (skills_text.get_width() // 2)
+        header_y = skill_box_y + int(10 * (current_height / original_height))
+        screen.blit(skills_text, (header_x, header_y))
+        
+        # Get skill list from player's skillset
+        skill_names = self.player.skillset.get_skill_names()
+        # Add "BACK" option at the end
+        options = skill_names + ["BACK"]
+        
+        # Scale text positions
+        option_x = skill_box_x + int(30 * (current_width / original_width))
+        option_y_base = skill_box_y + int(40 * (current_height / original_height))
+        option_line_height = int(25 * (current_height / original_height))
+        cost_x = skill_box_x + int(150 * (current_width / original_width))
+        
+        # Draw each skill with cost
+        for i, skill_name in enumerate(options):
+            option_y = option_y_base + i * option_line_height
+            
+            if skill_name == "BACK":
+                # Draw BACK option
+                if i == self.selected_skill_option:
+                    option_text = font.render(f"> {skill_name}", True, WHITE)
+                else:
+                    option_text = font.render(f"  {skill_name}", True, GRAY)
+                screen.blit(option_text, (option_x, option_y))
+            else:
+                # Get the skill data
+                skill = self.player.skillset.get_skill(skill_name)
+                
+                # Determine text color based on whether player has enough resources
+                has_resources = True
+                if skill.cost_type == "sp" and self.player.sp < skill.sp_cost:
+                    has_resources = False
+                elif skill.cost_type == "hp" and self.player.hp <= skill.hp_cost:
+                    has_resources = False
+                elif skill.cost_type == "both" and (self.player.sp < skill.sp_cost or self.player.hp <= skill.hp_cost):
+                    has_resources = False
+                
+                if i == self.selected_skill_option:
+                    # Selected skill
+                    if has_resources:
+                        name_color = WHITE  # Can use
+                    else:
+                        name_color = RED    # Can't use (not enough resources)
+                    option_text = font.render(f"> {skill_name}", True, name_color)
+                else:
+                    # Unselected skill
+                    if has_resources:
+                        name_color = GRAY   # Can use
+                    else:
+                        name_color = RED    # Can't use (not enough resources)
+                    option_text = font.render(f"  {skill_name}", True, name_color)
+                
+                # Draw skill name
+                screen.blit(option_text, (option_x, option_y))
+                
+                # Draw cost if applicable
+                if skill.cost_type != "none":
+                    if skill.cost_type == "sp":
+                        cost_text = small_font.render(f"{skill.sp_cost} SP", True, BLUE)
+                    elif skill.cost_type == "hp":
+                        cost_text = small_font.render(f"{skill.hp_cost} HP", True, ORANGE)
+                    elif skill.cost_type == "both":
+                        cost_text = small_font.render(f"{skill.hp_cost}HP/{skill.sp_cost}SP", True, PURPLE)
+                    screen.blit(cost_text, (cost_x, option_y))
+        
+        # Draw skill description for selected skill
+        if self.selected_skill_option < len(skill_names):
+            skill = self.player.skillset.get_skill(options[self.selected_skill_option])
+            if skill:
+                desc_y = option_y_base + len(options) * option_line_height
+                desc_text = small_font.render(skill.description, True, WHITE)
+                screen.blit(desc_text, (option_x, desc_y))
+    
     def _draw_battle_options(self, screen, font):
         """
         Draw the main battle options menu in a two-column layout.

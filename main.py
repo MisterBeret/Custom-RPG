@@ -209,8 +209,37 @@ def handle_input(event, state_manager, battle_system, player, collided_enemy,
                     elif event.key == pygame.K_ESCAPE:
                         battle_system.in_spell_menu = False
                 
-                # Handle regular battle options when not in spell menu
-                elif battle_system.turn == 0:  # Player's turn
+                # Handle skill menu navigation if active
+                if battle_system.in_skill_menu:
+                    # Get skills list
+                    skill_options = player.skillset.get_skill_names() + ["BACK"]
+                    
+                    if event.key == pygame.K_UP:
+                        battle_system.selected_skill_option = (battle_system.selected_skill_option - 1) % len(skill_options)
+                    elif event.key == pygame.K_DOWN:
+                        battle_system.selected_skill_option = (battle_system.selected_skill_option + 1) % len(skill_options)
+                    elif event.key == pygame.K_RETURN or event.key == pygame.K_SPACE:
+                        selected_skill = skill_options[battle_system.selected_skill_option]
+                        
+                        if selected_skill == "BACK":
+                            # Return to main battle menu
+                            battle_system.in_skill_menu = False
+                        else:
+                            # Try to use the skill
+                            success = battle_system.use_skill(selected_skill)
+                            if not success:
+                                # If use failed, stay in skill menu (message already set)
+                                pass
+                            else:
+                                # Return to battle screen after successful use
+                                battle_system.in_skill_menu = False
+                    
+                    # Also exit skill menu with ESCAPE key
+                    elif event.key == pygame.K_ESCAPE:
+                        battle_system.in_skill_menu = False
+
+                # Handle regular battle options when not in spell or skill menu
+                elif battle_system.turn == 0 and not battle_system.in_spell_menu:  # Player's turn and not in spell menu
                     # Only accept inputs when text is fully displayed
                     if battle_system.message_index >= len(battle_system.full_message):
                         if event.key == pygame.K_UP:
@@ -260,8 +289,8 @@ def handle_input(event, state_manager, battle_system, player, collided_enemy,
                                 # For now, MOVE uses the same functionality as RUN
                                 battle_system.process_action("RUN")
                             elif selected_action == "SKILL":
-                                # Placeholder for SKILL (not yet implemented)
-                                battle_system.set_message("Skill system not yet implemented.")
+                                battle_system.in_skill_menu = True
+                                battle_system.selected_skill_option = 0
                             elif selected_action == "ULTIMATE":
                                 # Placeholder for ULTIMATE (not yet implemented)
                                 battle_system.set_message("Ultimate abilities not yet implemented.")
