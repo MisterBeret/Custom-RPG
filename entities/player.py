@@ -71,7 +71,7 @@ class Player(Entity):
         
     def update(self, enemies=None, current_map=None):
         """
-        Update the player's state and position with boundary checking.
+        Update the player's state and position with buffer zones for walls.
         
         Args:
             enemies: Optional group of enemies to check for collisions
@@ -90,37 +90,42 @@ class Player(Entity):
         # Get keyboard input
         keys = pygame.key.get_pressed()
         
-        # Try movement in each direction separately to allow sliding along walls
-        if keys[pygame.K_LEFT]:
-            self.rect.x -= self.speed
-            # Check boundary collision with the left edge
-            if current_map and self.rect.left <= 0 and not current_map.connections["west"]:
-                # Calculate line thickness
-                line_thickness = max(1, int(5 * (current_width / ORIGINAL_WIDTH)))
-                self.rect.left = line_thickness
+        # Calculate boundary line thickness and buffer zone
+        line_thickness = max(1, int(5 * (current_width / ORIGINAL_WIDTH)))
+        buffer_zone = line_thickness + self.speed # Extra pixels to prevent jitter
         
-        if keys[pygame.K_RIGHT]:
+        # Handle horizontal movement
+        if keys[pygame.K_LEFT] and (not current_map or self.rect.left > buffer_zone or current_map.connections["west"]):
+            # Only move left if not at boundary or if there's a connection
+            self.rect.x -= self.speed
+            
+            # If we've crossed a solid boundary, snap to exactly the boundary
+            if current_map and self.rect.left < line_thickness and not current_map.connections["west"]:
+                self.rect.left = line_thickness
+                
+        elif keys[pygame.K_RIGHT] and (not current_map or self.rect.right < current_width - buffer_zone or current_map.connections["east"]):
+            # Only move right if not at boundary or if there's a connection
             self.rect.x += self.speed
-            # Check boundary collision with the right edge
-            if current_map and self.rect.right >= current_width and not current_map.connections["east"]:
-                # Calculate line thickness
-                line_thickness = max(1, int(5 * (current_width / ORIGINAL_WIDTH)))
+            
+            # If we've crossed a solid boundary, snap to exactly the boundary
+            if current_map and self.rect.right > current_width - line_thickness and not current_map.connections["east"]:
                 self.rect.right = current_width - line_thickness
         
-        if keys[pygame.K_UP]:
+        # Handle vertical movement
+        if keys[pygame.K_UP] and (not current_map or self.rect.top > buffer_zone or current_map.connections["north"]):
+            # Only move up if not at boundary or if there's a connection
             self.rect.y -= self.speed
-            # Check boundary collision with the top edge
-            if current_map and self.rect.top <= 0 and not current_map.connections["north"]:
-                # Calculate line thickness
-                line_thickness = max(1, int(5 * (current_width / ORIGINAL_WIDTH)))
+            
+            # If we've crossed a solid boundary, snap to exactly the boundary
+            if current_map and self.rect.top < line_thickness and not current_map.connections["north"]:
                 self.rect.top = line_thickness
-        
-        if keys[pygame.K_DOWN]:
+                
+        elif keys[pygame.K_DOWN] and (not current_map or self.rect.bottom < current_height - buffer_zone or current_map.connections["south"]):
+            # Only move down if not at boundary or if there's a connection
             self.rect.y += self.speed
-            # Check boundary collision with the bottom edge
-            if current_map and self.rect.bottom >= current_height and not current_map.connections["south"]:
-                # Calculate line thickness
-                line_thickness = max(1, int(5 * (current_width / ORIGINAL_WIDTH)))
+            
+            # If we've crossed a solid boundary, snap to exactly the boundary
+            if current_map and self.rect.bottom > current_height - line_thickness and not current_map.connections["south"]:
                 self.rect.bottom = current_height - line_thickness
         
         # Update original position to track where we are
