@@ -15,7 +15,7 @@ class Player(Entity):
     """
     Player character controllable by the user.
     """
-    def __init__(self, x, y):
+    def __init__(self, x, y, character_class=None, level=1):
         """
         Initialize the player.
         
@@ -23,7 +23,7 @@ class Player(Entity):
             x (int): Initial x coordinate
             y (int): Initial y coordinate
         """
-        super().__init__(x, y, 32, 48, GREEN)
+        super().__init__(x, y, 32, 48, GREEN, character_class, level)
         
         # Base movement speed (will be scaled based on resolution)
         self.base_speed = 5
@@ -50,17 +50,34 @@ class Player(Entity):
         # Inventory
         self.inventory = Inventory()
         
-        # Spell book
-        self.spellbook = SpellBook()
-
-        # Skill set
-        self.skillset = SkillSet()
-
-        # Ultimate abilities
-        self.ultimates = UltimateSet()
-        
-        # Passive abilities
-        self.passives = PassiveSet()
+        if character_class:
+            abilities = character_class.get_abilities_for_level(level)
+            
+            # Add spells
+            self.spellbook = SpellBook()
+            for spell_name in abilities["spells"]:
+                self.spellbook.add_spell(spell_name)
+            
+            # Add skills
+            self.skillset = SkillSet()
+            for skill_name in abilities["skills"]:
+                self.skillset.add_skill(skill_name)
+            
+            # Add ultimates
+            self.ultimates = UltimateSet()
+            for ultimate_name in abilities["ultimates"]:
+                self.ultimates.add_ultimate(ultimate_name)
+            
+            # Add passives
+            self.passives = PassiveSet(add_defaults=False)
+            for passive_name in abilities["passives"]:
+                self.passives.add_passive(passive_name)
+        else:
+            # Initialize with default abilities if no class is provided
+            self.spellbook = SpellBook()
+            self.skillset = SkillSet()
+            self.ultimates = UltimateSet()
+            self.passives = PassiveSet()
     
     def update_scale(self, current_width, current_height):
         """
@@ -383,28 +400,63 @@ class Player(Entity):
             
     def level_up(self):
         """
-        Increase player level and stats.
+        Increase player level and stats based on character class.
         """
         self.level += 1
-        self.max_hp += 2
-        self.max_sp += 1
-        self.attack += 1
         
-        # Every 2 levels, increase defense and intelligence
-        if self.level % 2 == 0:
+        if self.character_class:
+            # Get updated stats from class
+            stats = self.character_class.get_stat_block(self.level)
+            
+            # Store old values to calculate differences
+            old_max_hp = self.max_hp
+            old_max_sp = self.max_sp
+            
+            # Update stats
+            self.max_hp = stats["hp"]
+            self.max_sp = stats["sp"]
+            self.attack = stats["attack"]
+            self.defense = stats["defense"]
+            self.intelligence = stats["intelligence"]
+            self.resilience = stats["resilience"]
+            self.acc = stats["acc"]
+            self.spd = stats["spd"]
+            
+            # Check for new abilities
+            new_abilities = self.character_class.get_abilities_for_level(self.level)
+            
+            # Add any new spells
+            for spell_name in new_abilities["spells"]:
+                if spell_name not in self.spellbook.get_spell_names():
+                    self.spellbook.add_spell(spell_name)
+                    print(f"Learned new spell: {spell_name}")
+            
+            # Add any new skills
+            for skill_name in new_abilities["skills"]:
+                if skill_name not in self.skillset.get_skill_names():
+                    self.skillset.add_skill(skill_name)
+                    print(f"Learned new skill: {skill_name}")
+            
+            # Add any new ultimates
+            for ultimate_name in new_abilities["ultimates"]:
+                if ultimate_name not in self.ultimates.get_ultimate_names():
+                    self.ultimates.add_ultimate(ultimate_name)
+                    print(f"Learned new ultimate: {ultimate_name}")
+            
+            # Add any new passives
+            for passive_name in new_abilities["passives"]:
+                if passive_name not in self.passives.get_passive_names():
+                    self.passives.add_passive(passive_name)
+                    print(f"Learned new passive: {passive_name}")
+        else:
+            # If no class is provided, fall back on increasing every stat by 1
+            self.max_hp += 1
+            self.max_sp += 1
+            self.attack += 1
             self.defense += 1
             self.intelligence += 1
-    
-        # Every 4 levels, increase resilience
-        if self.level % 4 == 0:
             self.resilience += 1
-
-        # Every 4 levels, increase accuracy
-        if self.level % 4 == 0:
             self.acc += 1
-            
-        # Every 3 levels, increase speed
-        if self.level % 3 == 0:
             self.spd += 1
             
     def use_item(self, item_name, target=None):

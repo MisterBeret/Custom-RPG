@@ -9,7 +9,7 @@ class Entity(pygame.sprite.Sprite):
     """
     Base class for all game entities (player, enemies, etc.).
     """
-    def __init__(self, x, y, width, height, color):
+    def __init__(self, x, y, width, height, color, character_class=None, level=1):
         """
         Initialize a new entity.
         
@@ -37,18 +37,35 @@ class Entity(pygame.sprite.Sprite):
         self.rect = self.image.get_rect()
         self.rect.x = x
         self.rect.y = y
+
+        self.character_class = character_class
+        self.level = level
         
-        # Battle stats
-        self.max_hp = 1 # Maximum Health Points
-        self.hp = 1 # Current Health Points
-        self.max_sp = 0  # Maximum Special Points
-        self.sp = 0      # Current Special Points
-        self.attack = 2  # ATK determines damage of physical attacks, default value is 2
-        self.defense = 1  # DEf reduces incoming physical damage
-        self.intelligence = 0  # INT determines magic damage
-        self.resilience = 1    # RES reduces incoming magic damage
-        self.acc = 2  # ACC determines chance to land hit
-        self.spd = 1  # SPD determines turn order and chance to dodge incoming hits
+        # Initialize stats based on class if provided
+        if character_class:
+            stats = character_class.get_stat_block(level)
+            self.max_hp = stats["hp"]
+            self.hp = self.max_hp
+            self.max_sp = stats["sp"]
+            self.sp = self.max_sp
+            self.attack = stats["attack"]
+            self.defense = stats["defense"]
+            self.intelligence = stats["intelligence"]
+            self.resilience = stats["resilience"]
+            self.acc = stats["acc"]
+            self.spd = stats["spd"]
+        else:
+            # Fallback to default values if no class is provided
+            self.max_hp = 1 # Maximum Health Points
+            self.hp = 1 # Current Health Points
+            self.max_sp = 1  # Maximum Special Points
+            self.sp = 1      # Current Special Points
+            self.attack = 1  # ATK determines damage of physical attacks
+            self.defense = 1  # DEf reduces incoming physical damage
+            self.intelligence = 1  # INT determines magic damage
+            self.resilience = 1    # RES reduces incoming magic damage
+            self.acc = 1  # ACC determines chance to land hit
+            self.spd = 1  # SPD determines turn order and chance to dodge incoming hits
     
     def update_scale(self, current_width, current_height):
         """
