@@ -1,5 +1,5 @@
 """
-NPC class for the RPG game.
+NPC class.
 """
 import pygame
 from constants import WHITE, SCREEN_WIDTH, SCREEN_HEIGHT, ORIGINAL_WIDTH, ORIGINAL_HEIGHT
