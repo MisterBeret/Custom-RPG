@@ -57,7 +57,8 @@ WORLD_MAP = 0
 BATTLE = 1
 PAUSE = 2
 SETTINGS = 3
-INVENTORY = 4  
+INVENTORY = 4
+DIALOGUE = 5
 
 # Text speed options
 TEXT_SPEED_SLOW = "Slow"

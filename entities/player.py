@@ -28,6 +28,9 @@ class Player(Entity):
         # Base movement speed (will be scaled based on resolution)
         self.base_speed = 5
         self.speed = 5
+
+        # Facing direction tracking
+        self.facing = "down"  # Default facing direction
         
         # RPG Stats
         self.level = 1
@@ -135,6 +138,7 @@ class Player(Entity):
         elif keys[pygame.K_RIGHT] and (not current_map or self.rect.right < current_width - buffer_zone or current_map.connections["east"]):
             # Only move right if not at boundary or if there's a connection
             self.rect.x += self.speed
+            self.facing = "right"
             
             # If we've crossed a solid boundary, snap to exactly the boundary
             if current_map and self.rect.right > current_width - line_thickness and not current_map.connections["east"]:
@@ -144,6 +148,7 @@ class Player(Entity):
         if keys[pygame.K_UP] and (not current_map or self.rect.top > buffer_zone or current_map.connections["north"]):
             # Only move up if not at boundary or if there's a connection
             self.rect.y -= self.speed
+            self.facing = "up"
             
             # If we've crossed a solid boundary, snap to exactly the boundary
             if current_map and self.rect.top < line_thickness and not current_map.connections["north"]:
@@ -152,6 +157,7 @@ class Player(Entity):
         elif keys[pygame.K_DOWN] and (not current_map or self.rect.bottom < current_height - buffer_zone or current_map.connections["south"]):
             # Only move down if not at boundary or if there's a connection
             self.rect.y += self.speed
+            self.facing = "down"
             
             # If we've crossed a solid boundary, snap to exactly the boundary
             if current_map and self.rect.bottom > current_height - line_thickness and not current_map.connections["south"]:

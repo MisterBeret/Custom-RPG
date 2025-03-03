@@ -1,7 +1,7 @@
 """
 Game state management for the RPG game.
 """
-from constants import WORLD_MAP, BATTLE, PAUSE, SETTINGS, INVENTORY
+from constants import WORLD_MAP, BATTLE, PAUSE, SETTINGS, INVENTORY, DIALOGUE
 
 class GameStateManager:
     """
@@ -46,6 +46,11 @@ class GameStateManager:
         """Returns True if current state is the world map."""
         return self.current_state == WORLD_MAP
         
+    @property
+    def is_dialogue(self):
+        # Returns True if current state is dialogue
+        return self.current_state == DIALOGUE
+    
     @property
     def is_battle(self):
         """Returns True if current state is battle."""

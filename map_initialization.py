@@ -3,9 +3,10 @@ Map initialization for the RPG game.
 """
 from systems.map_system import MapSystem, MapArea
 from entities.enemy import Enemy
+from entities.npc import NPC
 import random
 import pygame
-from constants import BLACK, BLUE, GREEN, RED, PURPLE, ORIGINAL_WIDTH, ORIGINAL_HEIGHT
+from constants import BLACK, BLUE, GREEN, RED, PURPLE, WHITE, ORIGINAL_WIDTH, ORIGINAL_HEIGHT
 
 def initialize_maps(player):
     """
@@ -49,11 +50,23 @@ def initialize_maps(player):
     # Add some enemies to the center map
     add_random_enemies(center_map, 3)
     
-    # Add some enemies to other maps
-    add_random_enemies(north_map, 2)
-    add_random_enemies(east_map, 2)
-    add_random_enemies(south_map, 2)
-    add_random_enemies(west_map, 2)
+    test_dialogue = [
+        "This is sample text!",
+        "This is also sample text.",
+        "This, too, is sample text..."
+    ]
+
+    # Position NPC in the top right area
+    npc_x = ORIGINAL_WIDTH * 0.75
+    npc_y = ORIGINAL_HEIGHT * 0.3
+
+    test_npc = NPC(npc_x, npc_y, 32, 48, WHITE, "Test NPC", test_dialogue)
+
+    # Scale NPC to match current resolution
+    test_npc.update_scale(current_width, current_height)
+
+    # Add NPC to north map
+    north_map.add_entity(test_npc)
     
     # Add player to center map
     center_map.add_entity(player)

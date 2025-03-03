@@ -7,7 +7,7 @@ import random
 from constants import (
     BLACK, WHITE, GREEN, RED, GRAY, YELLOW, SCREEN_WIDTH, SCREEN_HEIGHT,
     ORIGINAL_WIDTH, ORIGINAL_HEIGHT, 
-    WORLD_MAP, BATTLE, PAUSE, SETTINGS, INVENTORY,
+    WORLD_MAP, BATTLE, PAUSE, SETTINGS, INVENTORY, DIALOGUE,
     TEXT_SPEED_SLOW, TEXT_SPEED_MEDIUM, TEXT_SPEED_FAST,
     PAUSE_OPTIONS, SETTINGS_OPTIONS, BATTLE_OPTIONS,
     RESOLUTION_OPTIONS, DISPLAY_MODE_OPTIONS, 
@@ -19,6 +19,7 @@ from entities.enemy import Enemy
 from systems.battle_system import BattleSystem
 from systems.inventory import get_item_effect
 from systems.map_system import MapSystem, MapArea
+from systems.dialogue_system import DialogueSystem
 import utils
 from map_initialization import initialize_maps
 
@@ -490,7 +491,8 @@ def draw_settings_menu(screen, settings_manager, selected_settings_option, font)
 
 def draw_game(screen, state_manager, battle_system, map_system,
              selected_pause_option, selected_settings_option, text_speed_setting,
-             selected_inventory_option, inventory_mode, font, settings_manager):
+             selected_inventory_option, inventory_mode, font, settings_manager,
+             dialogue_system=None):
     """
     Draw the game based on the current state.
     
@@ -514,6 +516,16 @@ def draw_game(screen, state_manager, battle_system, map_system,
         # Draw the current map, which handles its own background, entities, and boundaries
         current_map = map_system.get_current_map()
         current_map.draw(screen)
+    
+    elif state_manager.is_dialogue:
+        # First draw the underlying world map
+        current_map = map_system.get_current_map()
+        print("Drawing map under dialogue")
+        current_map.draw(screen)
+        
+        # Then draw the dialogue box on top
+        print("Drawing dialogue box")
+        dialogue_system.draw(screen)
         
     elif state_manager.is_battle:
         if battle_system:
@@ -656,6 +668,10 @@ def main():
     # Initialize Pygame
     pygame.init()
     
+    # To prevent double processing of ENTER key
+    last_key_time = 0
+    key_cooldown = 200  # milliseconds
+
     # Initialize settings manager
     from systems.settings_manager import SettingsManager
     settings_manager = SettingsManager()
@@ -691,6 +707,9 @@ def main():
     
     # Initialize map system with the player
     map_system = initialize_maps(player)
+    
+    # Initialize dialogue system
+    dialogue_system = DialogueSystem()
     
     # Now that map_system exists, make sure player is properly scaled for current resolution
     player.update_scale(current_width, current_height)
@@ -755,6 +774,28 @@ def main():
                 if battle_system_update is not None:
                     battle_system = battle_system_update
         
+            # Handle ENTER key for interactions
+            current_time = pygame.time.get_ticks()
+            if event.type == pygame.KEYDOWN and event.key == pygame.K_RETURN:
+                if current_time - last_key_time > key_cooldown:
+                    last_key_time = current_time
+                if state_manager.is_world_map:
+                    # Get the current map and check for nearby NPCs
+                    current_map = map_system.get_current_map()
+                    
+                    for npc in current_map.npcs:
+                        if npc.can_interact(player):
+                            # Start dialogue with this NPC
+                            npc.interact(dialogue_system)
+                            state_manager.change_state(DIALOGUE)
+                            break
+                elif state_manager.is_dialogue:
+                    # Add debug output
+                    print("Advancing dialogue")
+                    # Advance or end dialogue
+                    if not dialogue_system.advance_dialogue():
+                        state_manager.return_to_previous()
+        
         # Update game logic based on current state
         if state_manager.is_world_map:
             # Get the current map
@@ -797,7 +838,8 @@ def main():
         draw_game(
             screen, state_manager, battle_system, map_system, 
             selected_pause_option, selected_settings_option, text_speed_setting,
-            selected_inventory_option, inventory_mode, font, settings_manager
+            selected_inventory_option, inventory_mode, font, settings_manager,
+            dialogue_system
         )
         
         # Flip the display

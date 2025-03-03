@@ -21,6 +21,7 @@ class MapArea:
         self.background_color = background_color
         self.entities = pygame.sprite.Group()
         self.enemies = pygame.sprite.Group()
+        self.npcs = pygame.sprite.Group()
         
         # Connections to other maps (None if no connection)
         self.connections = {
@@ -38,6 +39,11 @@ class MapArea:
             entity: The entity to add
         """
         self.entities.add(entity)
+        
+        # If it's an NPC, add to the NPCs group
+        from entities.npc import NPC
+        if isinstance(entity, NPC):
+            self.npcs.add(entity)
         
     def add_enemy(self, enemy):
         """
