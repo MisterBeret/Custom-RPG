@@ -1,6 +1,29 @@
 """
 Data for all character classes
 """
+from systems.class_system import CharacterClass
+
+# Commoner (starting class)
+commoner = CharacterClass(
+    class_id="commoner",
+    name="Commoner",
+    category="Human",
+    base_stats={
+        "hp": 20,            # Low stats, 20 across the board
+        "sp": 20,            
+        "attack": 20,        
+        "defense": 20,       
+        "intelligence": 20,  
+        "resilience": 20,    
+        "acc": 20,           
+        "spd": 20            
+    },
+    learnable_abilities=[
+        (1, "ATTACK", "skill"),
+        (1, "DEFEND", "skill"),
+    ]
+)
+
 # Example: Warrior class
 warrior = CharacterClass(
     class_id="warrior",
@@ -69,7 +92,7 @@ wolf = CharacterClass(
         "spd": 75         # High Speed
     },
     learnable_abilities=[
-        (1, "BITE", "skill"),
+        (1, "ATTACK", "skill"),
         (3, "GROWL", "skill"),
         (5, "PACK_TACTICS", "passive"),
         (8, "HOWL", "skill")
