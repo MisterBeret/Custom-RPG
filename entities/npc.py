@@ -1,5 +1,5 @@
 """
-NPC class for the RPG game.
+NPC class.
 """
 import pygame
 from entities.entity import Entity

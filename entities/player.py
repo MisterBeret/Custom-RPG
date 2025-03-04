@@ -103,7 +103,7 @@ class Player(Entity):
         
     def update(self, enemies=None, current_map=None):
         """
-        Update the player's state and position with buffer zones for walls.
+        Update the player's state and position with collision detection for enemies, NPCs, and map boundaries.
         
         Args:
             enemies: Optional group of enemies to check for collisions
@@ -130,6 +130,7 @@ class Player(Entity):
         if keys[pygame.K_LEFT] and (not current_map or self.rect.left > buffer_zone or current_map.connections["west"]):
             # Only move left if not at boundary or if there's a connection
             self.rect.x -= self.speed
+            self.facing = "left"
             
             # If we've crossed a solid boundary, snap to exactly the boundary
             if current_map and self.rect.left < line_thickness and not current_map.connections["west"]:
@@ -170,15 +171,27 @@ class Player(Entity):
         self.original_y = self.rect.y * scale_factor_y
             
         # Check for collision with enemies
-        if enemies:
-            for enemy in enemies:
+        collided_enemy = None
+        if current_map:
+            # Check for collisions with enemies
+            for enemy in current_map.enemies:
                 if self.rect.colliderect(enemy.rect):
                     # Return to previous position to avoid movement into enemy
                     self.rect.x = previous_x
                     self.rect.y = previous_y
-                    return enemy  # Return the enemy we collided with
+                    collided_enemy = enemy
+                    break
+                    
+            # Check for collisions with NPCs (only if no enemy collision already)
+            if not collided_enemy:
+                for npc in current_map.npcs:
+                    if self.rect.colliderect(npc.rect):
+                        # Return to previous position to avoid walking through NPC
+                        self.rect.x = previous_x
+                        self.rect.y = previous_y
+                        break
 
-        return None  # No collision with enemies
+        return collided_enemy  # Return the enemy we collided with (or None)
 
     def reset_position(self):
         """
