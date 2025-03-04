@@ -2,23 +2,28 @@
 Map system for RPG game.
 """
 import pygame
+import random
 from constants import SCREEN_WIDTH, SCREEN_HEIGHT, ORIGINAL_WIDTH, ORIGINAL_HEIGHT, WHITE
 from utils import scale_position, scale_dimensions, scale_font_size
+from entities.enemy import Enemy
+from systems.encounter_system import EncounterManager
 
 class MapArea:
     """
     Represents a single map area in the game world.
     """
-    def __init__(self, name, background_color=(0, 0, 0)):
+    def __init__(self, name, background_color=(0, 0, 0), map_id=None):
         """
         Initialize a new map area.
         
         Args:
             name (str): The name of this map area
             background_color (tuple): RGB color tuple for the background
+            map_id (str): Unique identifier for this map area
         """
         self.name = name
         self.background_color = background_color
+        self.map_id = map_id if map_id else name.lower().replace(" ", "_")
         self.entities = pygame.sprite.Group()
         self.enemies = pygame.sprite.Group()
         self.npcs = pygame.sprite.Group()
@@ -30,6 +35,11 @@ class MapArea:
             "south": None,
             "west": None
         }
+        
+        # Enemy encounter settings
+        self.encounter_chance = 0.1  # Default 10% chance per step
+        self.steps_since_last_encounter = 0
+        self.min_steps_between_encounters = 10  # Minimum steps before another encounter
         
     def add_entity(self, entity):
         """
@@ -130,15 +140,17 @@ class MapArea:
         # Draw all entities in this map
         self.entities.draw(screen)
         
-    def update(self, player=None):
+    def update(self, player=None, encounter_manager=None):
         """
-        Update all entities in this map area and check for map transitions.
+        Update all entities in this map area and check for map transitions and encounters.
         
         Args:
             player: The player entity (optional)
+            encounter_manager: The encounter manager for generating random encounters
         
         Returns:
-            tuple: (new_map, position) if transition should occur, None otherwise
+            tuple or None: (new_map, position) if transition should occur, or 
+                          [Enemy] if encounter triggered, None otherwise
         """
         # Get current screen dimensions
         if player:
@@ -147,9 +159,43 @@ class MapArea:
         # Update enemies
         self.enemies.update()
         
-        # If player is provided and in this map, only check for map transitions
-        # (boundary checks now happen in player.update())
+        # If player is provided and in this map, check for map transitions and encounters
         if player and player in self.entities:
+            # Check if player has moved since last frame
+            player_moved = (
+                player.rect.x != getattr(player, 'last_x', player.rect.x) or
+                player.rect.y != getattr(player, 'last_y', player.rect.y)
+            )
+            
+            # Store current position for next frame
+            player.last_x = player.rect.x
+            player.last_y = player.rect.y
+            
+            # If player moved, increment step counter and check for encounters
+            if player_moved:
+                self.steps_since_last_encounter += 1
+                
+                # Only check for random encounters if we've taken enough steps since the last one
+                if (self.steps_since_last_encounter >= self.min_steps_between_encounters and 
+                    encounter_manager and random.random() < self.encounter_chance):
+                    
+                    # Generate an encounter for this map
+                    enemy_specs = encounter_manager.generate_encounter_for_map(self.map_id)
+                    if enemy_specs:
+                        # Reset step counter
+                        self.steps_since_last_encounter = 0
+                        
+                        # Create enemies from specs
+                        encounter_enemies = []
+                        for spec in enemy_specs:
+                            # Create the enemy off-screen initially (position will be set by battle system)
+                            enemy = Enemy.create_from_spec(spec, -100, -100)
+                            enemy.update_scale(current_width, current_height)
+                            encounter_enemies.append(enemy)
+                            
+                        # Return the list of enemies to trigger a battle
+                        return encounter_enemies
+            
             # Check for map transitions
             return self.check_map_transition(player, current_width, current_height)
         
@@ -217,12 +263,16 @@ class MapSystem:
     """
     Manages multiple map areas and transitions between them.
     """
-    def __init__(self):
+    def __init__(self, encounter_manager=None):
         """
         Initialize the map system.
+        
+        Args:
+            encounter_manager: The encounter manager for random encounters
         """
         self.maps = {}
         self.current_map = None
+        self.encounter_manager = encounter_manager
         
     def add_map(self, map_id, map_area):
         """
@@ -233,6 +283,8 @@ class MapSystem:
             map_area (MapArea): The map area to add
         """
         self.maps[map_id] = map_area
+        # Set the map_id on the map_area for consistency
+        map_area.map_id = map_id
         
     def set_current_map(self, map_id):
         """

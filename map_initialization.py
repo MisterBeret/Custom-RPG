@@ -4,6 +4,7 @@ Map initialization for the RPG game.
 from systems.map_system import MapSystem, MapArea
 from entities.enemy import Enemy
 from entities.npc import NPC
+from data.encounter_pools import initialize_encounter_pools
 import random
 import pygame
 from constants import BLACK, BLUE, GREEN, RED, PURPLE, WHITE, ORIGINAL_WIDTH, ORIGINAL_HEIGHT
@@ -18,15 +19,25 @@ def initialize_maps(player):
     Returns:
         MapSystem: The initialized map system
     """
-    # Create the map system
-    map_system = MapSystem()
+    # Initialize encounter pools
+    encounter_manager = initialize_encounter_pools()
+    
+    # Create the map system with the encounter manager
+    map_system = MapSystem(encounter_manager)
     
     # Create map areas with different background colors for visual distinction
-    center_map = MapArea("Debug Area - Center", BLACK)
-    north_map = MapArea("Debug Area - North", (0, 0, 20))  # Very dark blue
-    east_map = MapArea("Debug Area - East", (20, 0, 0))   # Very dark red
-    south_map = MapArea("Debug Area - South", (0, 20, 0))  # Very dark green
-    west_map = MapArea("Debug Area - West", (20, 0, 20))  # Very dark purple
+    center_map = MapArea("Debug Area - Center", BLACK, "center")
+    north_map = MapArea("Debug Area - North", (0, 0, 20), "north")  # Very dark blue
+    east_map = MapArea("Debug Area - East", (20, 0, 0), "east")   # Very dark red
+    south_map = MapArea("Debug Area - South", (0, 20, 0), "south")  # Very dark green
+    west_map = MapArea("Debug Area - West", (20, 0, 20), "west")  # Very dark purple
+    
+    # Set encounter chances
+    center_map.encounter_chance = 0.15  # 15% chance per step
+    north_map.encounter_chance = 0.10   # 10% chance per step
+    east_map.encounter_chance = 0.20    # 20% chance per step (rat-infested)
+    south_map.encounter_chance = 0.05   # 5% chance per step
+    west_map.encounter_chance = 0.15    # 15% chance per step
     
     # Add maps to the system
     map_system.add_map("center", center_map)
@@ -47,13 +58,12 @@ def initialize_maps(player):
     # Scale player to match current resolution
     player.update_scale(current_width, current_height)
     
-    # Add some enemies to the center map
-    add_random_enemies(center_map, 3)
-    
+    # Add test NPC with dialog
     test_dialogue = [
         "This is sample text!",
-        "This is also sample text.",
-        "This, too, is sample text..."
+        "I've heard there are more monsters around these days.",
+        "Be careful, sometimes you'll encounter multiple enemies at once!",
+        "The east area is particularly dangerous with all those rats..."
     ]
 
     # Position NPC in the top right area

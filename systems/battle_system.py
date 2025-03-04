@@ -28,8 +28,19 @@ class BattleSystem:
             text_speed_setting: The current text speed setting
         """
         self.player = player
-        self.enemy = enemy
+        self.enemies = enemies or []  # Store list of enemies
         self.action_processing = False  # Flag to prevent multiple actions per turn
+        
+        # Position enemies in a formation
+        self._setup_enemy_formation()
+
+        # Create targeting system for enemy selection
+        from systems.targeting_system import TargetingSystem
+        self.targeting_system = TargetingSystem(self.enemies)
+        self.in_targeting_mode = False  # Whether player is selecting a target
+        
+        # Track the current enemy attack sequence
+        self.current_enemy_index = 0
         
         # Determine who goes first based on speed
         if player.spd >= enemy.spd:
@@ -110,6 +121,76 @@ class BattleSystem:
         self.player_countering = False  # Flag to track counter attack animation
         self.counter_animation_timer = 0  # Separate timer for counter animations
         
+    def _setup_enemy_formation(self):
+        """Position enemies in a formation based on their count."""
+        enemy_count = len(self.enemies)
+        
+        # Get current screen dimensions
+        current_width, current_height = pygame.display.get_surface().get_size()
+        
+        # Base enemy positions (we'll position enemies from the left side now)
+        if enemy_count == 1:
+            # Single enemy centered
+            self.enemies[0].battle_position = 0
+            self.enemies[0].rect.topleft = (current_width * 0.25, current_height * 0.4)
+        elif enemy_count == 2:
+            # Two enemies side by side
+            self.enemies[0].battle_position = 0
+            self.enemies[0].rect.topleft = (current_width * 0.2, current_height * 0.3)
+            self.enemies[1].battle_position = 1
+            self.enemies[1].rect.topleft = (current_width * 0.3, current_height * 0.5)
+        elif enemy_count == 3:
+            # Three enemies in triangle formation
+            self.enemies[0].battle_position = 0
+            self.enemies[0].rect.topleft = (current_width * 0.15, current_height * 0.3)
+            self.enemies[1].battle_position = 1
+            self.enemies[1].rect.topleft = (current_width * 0.25, current_height * 0.5)
+            self.enemies[2].battle_position = 2
+            self.enemies[2].rect.topleft = (current_width * 0.35, current_height * 0.4)
+        elif enemy_count >= 4:
+            # Four or more enemies in rows
+            row1_count = min(2, enemy_count)
+            row2_count = min(2, enemy_count - row1_count)
+            row3_count = min(2, enemy_count - row1_count - row2_count)
+            
+            # First row (top)
+            for i in range(row1_count):
+                self.enemies[i].battle_position = i
+                x_pos = current_width * (0.15 + 0.15 * i)
+                y_pos = current_height * 0.25
+                self.enemies[i].rect.topleft = (x_pos, y_pos)
+                
+            # Second row (middle)
+            for i in range(row2_count):
+                idx = row1_count + i
+                self.enemies[idx].battle_position = idx
+                x_pos = current_width * (0.2 + 0.15 * i)
+                y_pos = current_height * 0.4
+                self.enemies[idx].rect.topleft = (x_pos, y_pos)
+                
+            # Third row (bottom)
+            for i in range(row3_count):
+                idx = row1_count + row2_count + i
+                self.enemies[idx].battle_position = idx
+                x_pos = current_width * (0.25 + 0.15 * i)
+                y_pos = current_height * 0.55
+                self.enemies[idx].rect.topleft = (x_pos, y_pos)
+                
+            # Any remaining enemies
+            for i in range(row1_count + row2_count + row3_count, enemy_count):
+                idx = i
+                self.enemies[idx].battle_position = idx
+                x_pos = current_width * 0.3
+                y_pos = current_height * (0.25 + 0.15 * (i - row1_count - row2_count - row3_count))
+                self.enemies[idx].rect.topleft = (x_pos, y_pos)
+        
+        # Update original positions to match the new positions
+        for enemy in self.enemies:
+            scale_factor_x = ORIGINAL_WIDTH / current_width
+            scale_factor_y = ORIGINAL_HEIGHT / current_height
+            enemy.original_x = enemy.rect.x * scale_factor_x
+            enemy.original_y = enemy.rect.y * scale_factor_y
+    
     def set_text_speed(self, text_speed_setting):
         """
         Set the text speed based on the given setting.
@@ -210,28 +291,10 @@ class BattleSystem:
         if self.turn == 0 and not self.action_processing:  # Player's turn and not already processing
             self.action_processing = True
             if action == "ATTACK":
-                # Start player attack animation
-                self.player_attacking = True
-                self.animation_timer = 0
-                
-                # Calculate hit chance and determine if attack hits
-                hit_chance = self.calculate_hit_chance(self.player, self.enemy)
-                attack_hits = random.random() < hit_chance
-                
-                if attack_hits:
-                    # Calculate damage
-                    damage = self.calculate_damage(self.player, self.enemy)
-                    self.enemy.take_damage(damage)
-                    
-                    # Store the message for later display after animation
-                    if self.enemy.is_defeated():
-                        self.pending_message = f"You attacked for {damage} damage! Enemy defeated!"
-                        self.pending_victory = True
-                    else:
-                        self.pending_message = f"You attacked for {damage} damage!"
-                else:
-                    # Attack missed
-                    self.pending_message = "Your attack missed!"
+                self.in_targeting_mode = True
+                self.targeting_system.start_targeting(self.enemies)
+                self.set_message("Select a target.")
+                self.action_processing = False  # Keep accepting input for target selection
                 
             elif action == "DEFEND":
                 self.player.defend()
@@ -432,6 +495,8 @@ class BattleSystem:
         
         return False
 
+    
+    
     def _draw_ultimate_menu(self, screen, font, small_font):
         """
         Draw the ultimate ability selection menu with scaling support.
@@ -566,6 +631,10 @@ class BattleSystem:
         """
         # Update text scrolling animation
         self.update_text_animation()
+
+        # Update targeting system
+        if self.in_targeting_mode:
+            self.targeting_system.update()
         
         # Only proceed with other updates if text animation is complete
         if self.message_index < len(self.full_message):
@@ -738,11 +807,12 @@ class BattleSystem:
                 
                 # Apply damage to player (only if attack didn't miss)
                 if "missed" not in self.pending_message:
-                    # We pass the battle system and enemy for potential passive triggers
+                    # We pass the battle system and current enemy for potential passive triggers
+                    current_enemy = self.enemies[self.current_enemy_index]
                     passive_triggered, passive_message = self.player.take_damage(
                         self.pending_damage, 
                         damage_type="physical", 
-                        attacker=self.enemy, 
+                        attacker=current_enemy, 
                         battle_system=self
                     )
                     
@@ -764,15 +834,15 @@ class BattleSystem:
                     self.battle_over = True
                     self.counter_triggered = False
                 else:
-                    # Reset enemy's defense multiplier at end of turn if defending
-                    self.enemy.end_turn()
+                    # Move to the next enemy's turn
+                    current_enemy = self.enemies[self.current_enemy_index]
+                    current_enemy.end_turn()
+                    self.current_enemy_index += 1
                     
-                    # If no counter was triggered, proceed to player's turn
+                    # If no counter was triggered, immediately start the next enemy's turn
                     if not self.counter_triggered:
-                        # Switch back to player turn
-                        self.turn = 0
-                        self.action_processing = False
-                    # If counter was triggered, we'll keep action_processing true and handle the counter effect
+                        self.enemy_attacking = False
+                        self.enemy_turn_processed = False
         
         # Handle fleeing animation
         elif self.player_fleeing:
@@ -802,87 +872,144 @@ class BattleSystem:
             self.process_enemy_turn()
             self.enemy_turn_processed = True  # Set the flag to prevent multiple attacks
                     
-    def process_enemy_turn(self):
+    def _perform_player_attack(self, target_enemy):
         """
-        Process the enemy's turn in battle.
+        Execute the player's attack on a specific enemy.
+        
+        Args:
+            target_enemy: The enemy to attack
         """
-        # Only start enemy attack if no animation is in progress
-        if not self.enemy_attacking and self.turn == 1:
-            # Start enemy attack animation
-            self.enemy_attacking = True
-            self.animation_timer = 0
+        # Start player attack animation
+        self.player_attacking = True
+        self.animation_timer = 0
         
-            # Calculate hit chance and determine if attack hits
-            hit_chance = self.calculate_hit_chance(self.enemy, self.player)
-            attack_hits = random.random() < hit_chance
+        # Calculate hit chance and determine if attack hits
+        hit_chance = self.calculate_hit_chance(self.player, target_enemy)
+        attack_hits = random.random() < hit_chance
         
-            if attack_hits:
-                # Calculate damage values
-                self.pending_damage = self.calculate_damage(self.enemy, self.player)
+        if attack_hits:
+            # Calculate damage
+            damage = self.calculate_damage(self.player, target_enemy)
+            target_enemy.take_damage(damage)
             
-                # For display purposes, calculate what damage would be without defending
-                if self.player.defending:
-                    import math
-                    self.original_damage = self.pending_damage * 2
-                else:
-                    self.original_damage = self.pending_damage
-            
-                # Prepare message based on player's defending status
-                if self.player.defending:
-                    self.pending_message = f"Enemy attacked! Your defense reduced damage from {self.original_damage} to {self.pending_damage}!"
-                else:
-                    self.pending_message = f"Enemy attacked for {self.pending_damage} damage!"
-                    
-                # Store whether a counter passive might trigger
-                self.counter_may_trigger = True
+            # Store the message for later display after animation
+            if target_enemy.is_defeated():
+                self.pending_message = f"You attacked {target_enemy.character_class.name if target_enemy.character_class else 'Enemy'} for {damage} damage! Enemy defeated!"
+                
+                # Check if all enemies are defeated
+                if all(enemy.is_defeated() for enemy in self.enemies):
+                    self.pending_victory = True
             else:
-                # Attack missed
-                self.pending_damage = 0
-                self.counter_may_trigger = False
-                # Prepare message based on why it might have missed
-                if self.player.defending:
-                    self.pending_message = "Enemy's attack missed! Your defensive stance helped you evade!"
-                else:
-                    self.pending_message = "Enemy's attack missed!"
+                self.pending_message = f"You attacked {target_enemy.character_class.name if target_enemy.character_class else 'Enemy'} for {damage} damage!"
+        else:
+            # Attack missed
+            self.pending_message = f"Your attack missed {target_enemy.character_class.name if target_enemy.character_class else 'Enemy'}!"
+    
+    def process_enemy_turn(self):
+        """Process the enemy's turn in battle."""
+        # Only proceed if it's enemy turn and no animation is active
+        if self.turn != 1 or self.enemy_attacking or self.enemy_turn_processed:
+            return
+            
+        # Check if we need to move to the next enemy
+        if self.current_enemy_index >= len(self.enemies):
+            # All enemies have acted, reset for next round
+            self.current_enemy_index = 0
+            self.turn = 0  # Back to player turn
+            self.enemy_turn_processed = True
+            return
+            
+        # Get the current enemy
+        current_enemy = self.enemies[self.current_enemy_index]
+        
+        # Skip defeated enemies
+        if current_enemy.is_defeated():
+            self.current_enemy_index += 1
+            return
+            
+        # Start enemy attack animation
+        self.enemy_attacking = True
+        self.animation_timer = 0
+
+        # Calculate hit chance and determine if attack hits
+        hit_chance = self.calculate_hit_chance(current_enemy, self.player)
+        attack_hits = random.random() < hit_chance
+
+        if attack_hits:
+            # Calculate damage values
+            self.pending_damage = self.calculate_damage(current_enemy, self.player)
+        
+            # For display purposes, calculate what damage would be without defending
+            if self.player.defending:
+                import math
+                self.original_damage = self.pending_damage * 2
+            else:
+                self.original_damage = self.pending_damage
+        
+            # Prepare message based on player's defending status
+            enemy_name = current_enemy.character_class.name if current_enemy.character_class else "Enemy"
+            if self.player.defending:
+                self.pending_message = f"{enemy_name} attacked! Your defense reduced damage from {self.original_damage} to {self.pending_damage}!"
+            else:
+                self.pending_message = f"{enemy_name} attacked for {self.pending_damage} damage!"
+                
+            # Store whether a counter passive might trigger
+            self.counter_may_trigger = True
+        else:
+            # Attack missed
+            enemy_name = current_enemy.character_class.name if current_enemy.character_class else "Enemy"
+            self.pending_damage = 0
+            self.counter_may_trigger = False
+            # Prepare message based on why it might have missed
+            if self.player.defending:
+                self.pending_message = f"{enemy_name}'s attack missed! Your defensive stance helped you evade!"
+            else:
+                self.pending_message = f"{enemy_name}'s attack missed!"
                     
     def draw(self, screen):
         """
-        Draw the battle scene with scaling support.
+        Draw the battle scene with all enemies.
         
         Args:
-            screen: The Pygame surface to draw on
+            screen: The pygame surface to draw on
         """
         # Import utils here to avoid circular imports
         from utils import scale_position, scale_dimensions
+        from systems.battle_ui_helpers import draw_enemy_name_tags, draw_enemy_health_bars, draw_turn_order_indicator
         
         # Get current screen dimensions
         current_width, current_height = screen.get_size()
         original_width, original_height = 800, 600  # Original design resolution
         
-        # Clear screen
-        screen.fill(BLACK)
+        # Draw background
+        from systems.battle_visualizer import draw_battle_background
+        draw_battle_background(screen)
         
-        # Calculate animation offsets
+        # Calculate animation offsets for player
         player_offset_x = 0
-        enemy_offset_x = 0
-
+        
         if self.player_attacking or self.player_countering:
-            # Move player toward enemy during first half, then back
+            # Move player toward active enemy during first half, then back
             # Player moves left (-) toward enemy
             animation_timer = self.animation_timer if self.player_attacking else self.counter_animation_timer
+            current_enemy = self.targeting_system.get_selected_target() if self.targeting_system.active else \
+                        (self.enemies[self.current_enemy_index] if self.current_enemy_index < len(self.enemies) else self.enemies[0])
+                        
+            target_offset = -20  # Base movement amount
+            
+            # Adjust movement direction based on enemy position
+            if current_enemy and current_enemy.rect.centerx > self.player.rect.centerx:
+                # Enemy is to the right, move right
+                movement_dir = 1
+            else:
+                # Enemy is to the left, move left
+                movement_dir = -1
+                
             if animation_timer < self.animation_duration / 2:
-                player_offset_x = int(-30 * (animation_timer / (self.animation_duration / 2)))
+                player_offset_x = int(target_offset * movement_dir * (animation_timer / (self.animation_duration / 2)))
             else:
-                player_offset_x = int(-30 * (1 - (animation_timer - self.animation_duration / 2) / (self.animation_duration / 2)))
+                player_offset_x = int(target_offset * movement_dir * (1 - (animation_timer - self.animation_duration / 2) / (self.animation_duration / 2)))
         
-        if self.player_attacking:
-            # Move player toward enemy during first half, then back
-            # Player moves left (-) toward enemy
-            if self.animation_timer < self.animation_duration / 2:
-                player_offset_x = int(-30 * (self.animation_timer / (self.animation_duration / 2)))
-            else:
-                player_offset_x = int(-30 * (1 - (self.animation_timer - self.animation_duration / 2) / (self.animation_duration / 2)))
-                    
         elif self.player_fleeing:
             # Move player off the right side of the screen
             player_offset_x = int(300 * (self.animation_timer / self.flee_animation_duration))
@@ -894,134 +1021,71 @@ class BattleSystem:
             else:
                 player_offset_x = int(-10 * (1 - (self.animation_timer - self.spell_animation_duration / 2) / (self.spell_animation_duration / 2)))
         
-        if self.enemy_attacking:
-            # Move enemy toward player during first half, then back
-            if self.animation_timer < self.animation_duration / 2:
-                enemy_offset_x = int(30 * (self.animation_timer / (self.animation_duration / 2)))
-            else:
-                enemy_offset_x = int(30 * (1 - (self.animation_timer - self.animation_duration / 2) / (self.animation_duration / 2)))
-        
         # Scale positions and dimensions
         player_pos_scaled = scale_position(self.player_pos[0], self.player_pos[1], 
                                         original_width, original_height, 
                                         current_width, current_height)
-        enemy_pos_scaled = scale_position(self.enemy_pos[0], self.enemy_pos[1],
-                                        original_width, original_height,
-                                        current_width, current_height)
         
         player_size = scale_dimensions(50, 75, original_width, original_height, 
-                                    current_width, current_height)
-        enemy_size = scale_dimensions(50, 50, original_width, original_height,
                                     current_width, current_height)
         
         # Scale offset values
         player_offset_x = int(player_offset_x * (current_width / original_width))
-        enemy_offset_x = int(enemy_offset_x * (current_width / original_width))
         
         # Draw player unless player has fled
         if not self.fled:
-            # During fleeing animation, only draw player until they're mostly off-screen
-            if not self.player_fleeing or player_offset_x > -200 * (current_width / original_width):
-                # Draw magic effect if casting
-                if self.player_casting and self.current_spell and self.current_spell.effect_type == "damage":
-                    # Draw spell projectile traveling toward enemy
-                    spell_progress = self.animation_timer / self.spell_animation_duration
-                    spell_x, spell_y = scale_position(
-                        self.player_pos[0] - 300 * spell_progress,
-                        self.player_pos[1] + 35,
-                        original_width, original_height,
-                        current_width, current_height
-                    )
-                    
-                    # Scale circle radius
-                    circle_radius = int(10 * min(current_width / original_width, current_height / original_height))
-                    pygame.draw.circle(screen, RED, (int(spell_x), int(spell_y)), circle_radius)
-                
-                # For drawing Ultimate effects, after any spell effect drawing and before the player character drawing:
-                elif self.player_using_ultimate and self.current_ultimate and self.current_ultimate.effect_type == "damage":
-                    # For ultimate attacks, draw multiple projectiles and add flashes
-                    ultimate_progress = self.animation_timer / self.ultimate_animation_duration
-                    
-                    # Draw 5 projectiles for the 5x damage multiplier
-                    for i in range(5):
-                        # Calculate offset based on index to create fan-like pattern
-                        angle_offset = (i - 2) * 10  # -20, -10, 0, 10, 20 degrees
-                        # Convert to radians
-                        angle_rad = angle_offset * (3.14159 / 180)
-                        
-                        # Calculate x and y offsets based on angle
-                        x_offset = 300 * ultimate_progress
-                        y_offset = x_offset * pygame.math.Vector2(0, 1).rotate(angle_offset).y
-                        
-                        # Scale projectile position
-                        proj_x, proj_y = scale_position(
-                            self.player_pos[0] - x_offset,
-                            self.player_pos[1] + 35 + y_offset,
-                            original_width, original_height,
-                            current_width, current_height
-                        )
-                        
-                        # Scale projectile size (larger than normal attacks)
-                        proj_radius = int(12 * min(current_width / original_width, current_height / original_height))
-                        
-                        # Use bright red for ultimate projectiles
-                        proj_color = (255, 0, 0)
-                        pygame.draw.circle(screen, proj_color, (int(proj_x), int(proj_y)), proj_radius)
-                    
-                    # Draw bright flashes around the player
-                    if ultimate_progress < 0.3:  # Only during first third of animation
-                        flash_radius = int(40 * (1 - ultimate_progress/0.3) * min(current_width / original_width, 
-                                                                                    current_height / original_height))
-                        flash_x, flash_y = scale_position(
-                            self.player_pos[0] + player_size[0]/2,
-                            self.player_pos[1] + player_size[1]/2,
-                            original_width, original_height,
-                            current_width, current_height
-                        )
-                        
-                        # Draw semi-transparent flash
-                        flash_surf = pygame.Surface((flash_radius*2, flash_radius*2), pygame.SRCALPHA)
-                        pygame.draw.circle(flash_surf, (255, 0, 0, 128), (flash_radius, flash_radius), flash_radius)
-                        screen.blit(flash_surf, (flash_x - flash_radius, flash_y - flash_radius))
-                
-                # Draw player character
-                pygame.draw.rect(screen, GREEN, 
-                                (player_pos_scaled[0] + player_offset_x, 
-                                player_pos_scaled[1], 
-                                player_size[0], player_size[1]))
-                
-                # Draw healing effect if applicable
-                if self.player_casting and self.current_spell and self.current_spell.effect_type == "healing":
-                    # Scale radius for healing particles
-                    base_radius = 20 * (current_width / original_width)
-                    radius_increase = 10 * (current_width / original_width)
-                    particle_size = int(5 * (current_width / original_width))
-                    
-                    # Draw healing particles around player
-                    for i in range(5):
-                        angle = self.animation_timer * 0.1 + i * (2 * 3.14159 / 5)
-                        radius = base_radius + radius_increase * (self.animation_timer / self.spell_animation_duration)
-                        
-                        # Center of player for particle origin
-                        center_x = player_pos_scaled[0] + player_size[0] / 2
-                        center_y = player_pos_scaled[1] + player_size[1] / 2
-                        
-                        heal_x = center_x + int(radius * pygame.math.Vector2(1, 0).rotate(angle * 57.3).x)
-                        heal_y = center_y + int(radius * pygame.math.Vector2(1, 0).rotate(angle * 57.3).y)
-                        pygame.draw.circle(screen, BLUE, (heal_x, heal_y), particle_size)
+            # Draw player character
+            pygame.draw.rect(screen, GREEN, 
+                            (player_pos_scaled[0] + player_offset_x, 
+                            player_pos_scaled[1], 
+                            player_size[0], player_size[1]))
         
-        # Draw enemy
-        pygame.draw.rect(screen, RED, 
-                        (enemy_pos_scaled[0] + enemy_offset_x, 
-                        enemy_pos_scaled[1], 
-                        enemy_size[0], enemy_size[1]))
+        # Draw all enemies
+        for i, enemy in enumerate(self.enemies):
+            if not enemy.is_defeated():  # Only draw active enemies
+                # Calculate animation offsets for current enemy
+                enemy_offset_x = 0
+                if self.enemy_attacking and self.current_enemy_index == i:
+                    # Only animate the currently attacking enemy
+                    if self.animation_timer < self.animation_duration / 2:
+                        # Move enemy toward player
+                        if enemy.rect.centerx < self.player.rect.centerx:
+                            # Enemy is to the left, move right
+                            enemy_offset_x = int(30 * (self.animation_timer / (self.animation_duration / 2)))
+                        else:
+                            # Enemy is to the right, move left
+                            enemy_offset_x = int(-30 * (self.animation_timer / (self.animation_duration / 2)))
+                    else:
+                        # Move enemy back to original position
+                        if enemy.rect.centerx < self.player.rect.centerx:
+                            # Enemy is to the left, move left
+                            enemy_offset_x = int(30 * (1 - (self.animation_timer - self.animation_duration / 2) / (self.animation_duration / 2)))
+                        else:
+                            # Enemy is to the right, move right
+                            enemy_offset_x = int(-30 * (1 - (self.animation_timer - self.animation_duration / 2) / (self.animation_duration / 2)))
+                
+                # Draw enemy with offset
+                pygame.draw.rect(screen, enemy.color, 
+                            (enemy.rect.x + enemy_offset_x, 
+                                enemy.rect.y, 
+                                enemy.rect.width, enemy.rect.height))
+        
+        # Draw enemy names and health bars
+        draw_enemy_name_tags(screen, self.enemies)
+        draw_enemy_health_bars(screen, self.enemies)
+        
+        # Draw turn order indicator at the top of the screen
+        draw_turn_order_indicator(screen, self)
+        
+        # Draw any active battle effects
+        if hasattr(self, 'visualizer'):
+            self.visualizer.draw(screen)
+        
+        # Draw targeting system if active
+        if self.in_targeting_mode:
+            self.targeting_system.draw(screen)
         
         # Draw the battle UI
-        self._draw_battle_ui(screen)
-        
-        # Draw enemy
-        pygame.draw.rect(screen, RED, (self.enemy_pos[0] + enemy_offset_x, self.enemy_pos[1], 50, 50))
-        
         self._draw_battle_ui(screen)
         
     def _draw_battle_ui(self, screen):
@@ -1447,3 +1511,19 @@ class BattleSystem:
         xp_text_x = window_x + int(10 * (current_width / original_width))
         xp_text_y = sp_bar_y + int(25 * (current_height / original_height))
         screen.blit(xp_text, (xp_text_x, xp_text_y))
+    
+    def check_battle_over(self):
+        """
+        Check if the battle is over (all enemies defeated).
+        
+        Returns:
+            bool: True if battle is over, False otherwise
+        """
+        return all(enemy.is_defeated() for enemy in self.enemies)
+
+
+    def award_experience(self):
+        """Award experience to the player for defeated enemies."""
+        total_xp = sum(enemy.xp for enemy in self.enemies if enemy.is_defeated())
+        self.player.gain_experience(total_xp)
+        return total_xp
