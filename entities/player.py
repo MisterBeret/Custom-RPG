@@ -184,12 +184,21 @@ class Player(Entity):
                     
             # Check for collisions with NPCs (only if no enemy collision already)
             if not collided_enemy:
+                npc_collision = False # Tracks NPC collisions
                 for npc in current_map.npcs:
                     if self.rect.colliderect(npc.rect):
                         # Return to previous position to avoid walking through NPC
                         self.rect.x = previous_x
                         self.rect.y = previous_y
+                        npc_collision = True  # Set flag to indicate collision
                         break
+
+                # If we had a collision with an NPC, update original position as well
+                if npc_collision:
+                    scale_factor_x = ORIGINAL_WIDTH / current_width
+                    scale_factor_y = ORIGINAL_HEIGHT / current_height
+                    self.original_x = self.rect.x * scale_factor_x
+                    self.original_y = self.rect.y * scale_factor_y
 
         return collided_enemy  # Return the enemy we collided with (or None)
 
