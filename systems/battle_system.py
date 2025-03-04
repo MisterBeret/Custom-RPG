@@ -11,24 +11,30 @@ from utils import scale_position, scale_dimensions, scale_font_size
 from constants import (BLACK, WHITE, GREEN, RED, GRAY, SCREEN_WIDTH, SCREEN_HEIGHT,
                       ATTACK_ANIMATION_DURATION, FLEE_ANIMATION_DURATION,
                       ACTION_DELAY_DURATION, SPELL_ANIMATION_DURATION, 
-                      BATTLE_OPTIONS, MAX_LOG_SIZE,
+                      BATTLE_OPTIONS, MAX_LOG_SIZE, ORIGINAL_WIDTH, ORIGINAL_HEIGHT,
                       ORANGE, BLUE, DARK_BLUE, PURPLE, YELLOW)
 
 class BattleSystem:
     """
     Manages turn-based battles between player and enemies.
     """
-    def __init__(self, player, enemy, text_speed_setting):
+    def __init__(self, player, enemies, text_speed_setting):
         """
         Initialize the battle system.
         
         Args:
             player: The player entity
-            enemy: The enemy entity
+            enemies: A list of enemy entities or a single enemy
             text_speed_setting: The current text speed setting
         """
         self.player = player
-        self.enemies = enemies or []  # Store list of enemies
+        
+        # Ensure enemies is a list
+        if not isinstance(enemies, list):
+            self.enemies = [enemies]
+        else:
+            self.enemies = enemies
+        
         self.action_processing = False  # Flag to prevent multiple actions per turn
         
         # Position enemies in a formation
@@ -43,7 +49,10 @@ class BattleSystem:
         self.current_enemy_index = 0
         
         # Determine who goes first based on speed
-        if player.spd >= enemy.spd:
+        # Compare player speed to the fastest enemy
+        fastest_enemy_speed = max([enemy.spd for enemy in self.enemies]) if self.enemies else 0
+        
+        if player.spd >= fastest_enemy_speed:
             self.turn = 0  # Player's turn
             self.first_message = "Battle started! You move first!"
         else:
@@ -291,11 +300,16 @@ class BattleSystem:
         if self.turn == 0 and not self.action_processing:  # Player's turn and not already processing
             self.action_processing = True
             if action == "ATTACK":
-                self.in_targeting_mode = True
-                self.targeting_system.start_targeting(self.enemies)
-                self.set_message("Select a target.")
-                self.action_processing = False  # Keep accepting input for target selection
-                
+                if len(self.enemies) == 1:
+                    # With just one enemy, attack it directly
+                    self._perform_player_attack(self.enemies[0])
+                else:
+                    # With multiple enemies, enter targeting mode
+                    self.in_targeting_mode = True
+                    self.targeting_system.start_targeting(self.enemies)
+                    self.set_message("Select a target.")
+                    self.action_processing = False  # Keep accepting input for target selection
+                    
             elif action == "DEFEND":
                 self.player.defend()
                 self.set_message("You're defending! Incoming damage reduced and evasion increased!")
@@ -325,6 +339,42 @@ class BattleSystem:
                 self.set_message("STATUS system not yet implemented.")
                 self.action_processing = False
 
+    def handle_player_input(self, event):
+        """
+        Handle player input for targeting and other interactive states.
+        
+        Args:
+            event: The pygame event
+            
+        Returns:
+            bool: True if input was handled, False otherwise
+        """
+        # Only handle inputs when in targeting mode
+        if self.in_targeting_mode and event.type == pygame.KEYDOWN:
+            if event.key == pygame.K_LEFT or event.key == pygame.K_RIGHT:
+                # Navigate between enemies
+                if event.key == pygame.K_LEFT:
+                    self.targeting_system.previous_target()
+                else:
+                    self.targeting_system.next_target()
+                return True
+                
+            elif event.key == pygame.K_RETURN or event.key == pygame.K_SPACE:
+                # Select the current target
+                target = self.targeting_system.get_selected_target()
+                if target:
+                    self.in_targeting_mode = False
+                    self._perform_player_attack(target)
+                return True
+                
+            elif event.key == pygame.K_ESCAPE:
+                # Cancel targeting and return to battle menu
+                self.in_targeting_mode = False
+                self.action_processing = False
+                return True
+                
+        return False
+    
     def cast_spell(self, spell_name):
         """
         Process casting a spell.

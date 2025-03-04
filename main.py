@@ -18,6 +18,8 @@ from game_states import GameStateManager
 from entities.player import Player
 from entities.enemy import Enemy
 from systems.battle_system import BattleSystem
+from systems.battle_ui_helpers import draw_enemy_name_tags, draw_enemy_health_bars, draw_turn_order_indicator
+from systems.battle_visualizer import draw_battle_background, BattleVisualizer
 from systems.targeting_system import TargetingSystem
 from systems.inventory import get_item_effect
 from systems.map_system import MapSystem, MapArea
@@ -810,7 +812,7 @@ def main():
             # Update player with current map for boundary checking
             collided_enemy = player.update(current_map.enemies, current_map)
 
-            # Check if we have an encounter
+            # Check if we have an encounter from map update
             map_update_result = current_map.update(player, map_system.encounter_manager)
             
             if isinstance(map_update_result, list):
@@ -819,38 +821,24 @@ def main():
                 # Switch to battle state
                 state_manager.change_state(BATTLE)
                 battle_system = BattleSystem(player, encountered_enemies, text_speed_setting)
-            elif isinstance(player_collision_result, list):
-                # Direct collision with an enemy group (for backwards compatibility)
-                encountered_enemies = player_collision_result
-                # Switch to battle state
-                state_manager.change_state(BATTLE)
-                battle_system = BattleSystem(player, encountered_enemies, text_speed_setting)
-            elif player_collision_result:
-                # Old single-enemy collision case (for backwards compatibility)
-                # Switch to battle state
-                state_manager.change_state(BATTLE)
-                battle_system = BattleSystem(player, [player_collision_result], text_speed_setting)
             elif map_update_result:
                 # Map transition
                 new_map, entry_side = map_update_result
                 map_system.transition_player(player, new_map, entry_side)
-            
-            if collided_enemy:
-                # Switch to battle state
+            elif collided_enemy:
+                # Direct collision with an enemy (old system)
                 state_manager.change_state(BATTLE)
-                battle_system = BattleSystem(player, collided_enemy, text_speed_setting)
-            else:
-                # Only check for map transitions if no battle started
-                map_transition = current_map.update(player)
-                if map_transition:
-                    new_map, entry_side = map_transition
-                    map_system.transition_player(player, new_map, entry_side)
+                # Check if collided_enemy is a list or single enemy
+                if isinstance(collided_enemy, list):
+                    battle_system = BattleSystem(player, collided_enemy, text_speed_setting)
+                else:
+                    battle_system = BattleSystem(player, [collided_enemy], text_speed_setting)
             
         elif state_manager.is_battle and battle_system:
             # First check if the battle system wants to handle input directly
             if event.type == pygame.KEYDOWN:
-                if battle_system.handle_player_input(event):
-                    continue  # Input was handled by battle system
+                if hasattr(battle_system, 'handle_player_input') and battle_system.handle_player_input(event):
+                    return selected_pause_option, selected_settings_option, selected_inventory_option, inventory_mode, battle_system, text_speed_setting, text_speed_changed  # Input was handled
             
             # Update battle animations and process turns
             battle_system.update_animations()

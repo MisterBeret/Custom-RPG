@@ -21,6 +21,15 @@ class TargetingSystem:
         self.selected_target_index = 0
         self.cursor_blink_timer = 0
         self.cursor_visible = True
+    
+    def get_valid_targets(self):
+        """
+        Get the list of valid targets (non-defeated enemies).
+        
+        Returns:
+            List of valid enemy targets
+        """
+        return [enemy for enemy in self.enemies if not enemy.is_defeated()]
         
     def start_targeting(self, enemies):
         """
@@ -44,20 +53,27 @@ class TargetingSystem:
         Returns:
             The selected enemy, or None if no enemies
         """
-        if not self.enemies:
+        valid_targets = self.get_valid_targets()
+        if not valid_targets:
             return None
             
-        return self.enemies[self.selected_target_index]
+        # Make sure the index is valid
+        if self.selected_target_index >= len(valid_targets):
+            self.selected_target_index = 0
+            
+        return valid_targets[self.selected_target_index]
         
     def next_target(self):
         """Select the next target in the list."""
-        if self.enemies:
-            self.selected_target_index = (self.selected_target_index + 1) % len(self.enemies)
+        valid_targets = self.get_valid_targets()
+        if valid_targets:
+            self.selected_target_index = (self.selected_target_index + 1) % len(valid_targets)
             
     def previous_target(self):
         """Select the previous target in the list."""
-        if self.enemies:
-            self.selected_target_index = (self.selected_target_index - 1) % len(self.enemies)
+        valid_targets = self.get_valid_targets()
+        if valid_targets:
+            self.selected_target_index = (self.selected_target_index - 1) % len(valid_targets)
             
     def update(self):
         """Update the targeting system animations."""
