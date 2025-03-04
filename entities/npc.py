@@ -43,11 +43,13 @@ class NPC(Entity):
         dy = self.rect.centery - player.rect.centery
         distance = (dx**2 + dy**2)**0.5
         
+        interaction_distance = 80
+        
         # Check if player is close enough
-        if distance > self.interaction_distance:
+        if distance > interaction_distance:
             return False
             
-        # Check if player is facing the NPC
+        # Check if player is approximately facing the NPC
         if player.facing == "up" and dy < 0:
             return True
         elif player.facing == "down" and dy > 0:

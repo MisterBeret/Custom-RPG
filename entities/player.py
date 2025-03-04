@@ -126,11 +126,16 @@ class Player(Entity):
         line_thickness = max(1, int(5 * (current_width / ORIGINAL_WIDTH)))
         buffer_zone = line_thickness + self.speed # Extra pixels to prevent jitter
         
+        # Track if we moved in each axis
+        moved_x = False
+        moved_y = False
+        
         # Handle horizontal movement
         if keys[pygame.K_LEFT] and (not current_map or self.rect.left > buffer_zone or current_map.connections["west"]):
             # Only move left if not at boundary or if there's a connection
             self.rect.x -= self.speed
             self.facing = "left"
+            moved_x = True
             
             # If we've crossed a solid boundary, snap to exactly the boundary
             if current_map and self.rect.left < line_thickness and not current_map.connections["west"]:
@@ -140,16 +145,26 @@ class Player(Entity):
             # Only move right if not at boundary or if there's a connection
             self.rect.x += self.speed
             self.facing = "right"
+            moved_x = True
             
             # If we've crossed a solid boundary, snap to exactly the boundary
             if current_map and self.rect.right > current_width - line_thickness and not current_map.connections["east"]:
                 self.rect.right = current_width - line_thickness
+        
+        # Check for NPC collisions after horizontal movement
+        if current_map and moved_x:
+            for npc in current_map.npcs:
+                if self.rect.colliderect(npc.rect):
+                    # Reset only the x-position if collision occurred after x-movement
+                    self.rect.x = previous_x
+                    break
         
         # Handle vertical movement
         if keys[pygame.K_UP] and (not current_map or self.rect.top > buffer_zone or current_map.connections["north"]):
             # Only move up if not at boundary or if there's a connection
             self.rect.y -= self.speed
             self.facing = "up"
+            moved_y = True
             
             # If we've crossed a solid boundary, snap to exactly the boundary
             if current_map and self.rect.top < line_thickness and not current_map.connections["north"]:
@@ -159,10 +174,19 @@ class Player(Entity):
             # Only move down if not at boundary or if there's a connection
             self.rect.y += self.speed
             self.facing = "down"
+            moved_y = True
             
             # If we've crossed a solid boundary, snap to exactly the boundary
             if current_map and self.rect.bottom > current_height - line_thickness and not current_map.connections["south"]:
                 self.rect.bottom = current_height - line_thickness
+        
+        # Check for NPC collisions after vertical movement
+        if current_map and moved_y:
+            for npc in current_map.npcs:
+                if self.rect.colliderect(npc.rect):
+                    # Reset only the y-position if collision occurred after y-movement
+                    self.rect.y = previous_y
+                    break
         
         # Update original position to track where we are
         scale_factor_x = ORIGINAL_WIDTH / current_width
@@ -181,24 +205,6 @@ class Player(Entity):
                     self.rect.y = previous_y
                     collided_enemy = enemy
                     break
-                    
-            # Check for collisions with NPCs (only if no enemy collision already)
-            if not collided_enemy:
-                npc_collision = False # Tracks NPC collisions
-                for npc in current_map.npcs:
-                    if self.rect.colliderect(npc.rect):
-                        # Return to previous position to avoid walking through NPC
-                        self.rect.x = previous_x
-                        self.rect.y = previous_y
-                        npc_collision = True  # Set flag to indicate collision
-                        break
-
-                # If we had a collision with an NPC, update original position as well
-                if npc_collision:
-                    scale_factor_x = ORIGINAL_WIDTH / current_width
-                    scale_factor_y = ORIGINAL_HEIGHT / current_height
-                    self.original_x = self.rect.x * scale_factor_x
-                    self.original_y = self.rect.y * scale_factor_y
 
         return collided_enemy  # Return the enemy we collided with (or None)
 
