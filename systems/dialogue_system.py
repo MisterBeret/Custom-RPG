@@ -30,8 +30,9 @@ class DialogueSystem:
             self.active = True
             self.current_dialogue = dialogue_list
             self.current_dialogue_index = 0
-            self.displayed_text = ""
-            self.text_index = 0
+            initial_chars = min(10, len(self.current_dialogue[0]))  # Show at least a few characters
+            self.displayed_text = self.current_dialogue[0][:initial_chars]
+            self.text_index = initial_chars
             self.text_timer = 0
     
     def advance_dialogue(self):
@@ -93,21 +94,9 @@ class DialogueSystem:
         """
         if not self.active:
             return
-        
-        # Debug info - paint a simple box to verify rendering is working
-        print("Drawing dialogue box, active =", self.active)
-        print("Current text:", self.displayed_text)
             
         # Get current screen dimensions
         current_width, current_height = screen.get_size()
-
-        # Draw a simple test box even if there's an issue with other parts
-        simple_box_x = 50
-        simple_box_y = current_height - 150
-        simple_box_width = current_width - 100
-        simple_box_height = 120
-        pygame.draw.rect(screen, BLACK, (simple_box_x, simple_box_y, simple_box_width, simple_box_height))
-        pygame.draw.rect(screen, WHITE, (simple_box_x, simple_box_y, simple_box_width, simple_box_height), 3)
         
         # Scale dialogue box dimensions and position
         box_width = int(current_width * 0.8)
@@ -160,3 +149,17 @@ class DialogueSystem:
             indicator_y = box_y + box_height - int(30 * (current_height / ORIGINAL_HEIGHT))
             indicator_text = font.render("▼", True, WHITE)
             screen.blit(indicator_text, (indicator_x, indicator_y))
+    
+    def set_text_speed(self, text_speed_setting):
+        """
+        Set the text speed based on the given setting.
+        
+        Args:
+            text_speed_setting: The text speed setting ("SLOW", "MEDIUM", or "FAST")
+        """
+        if text_speed_setting == "SLOW":
+            self.text_speed = 1
+        elif text_speed_setting == "MEDIUM":
+            self.text_speed = 2
+        else:  # FAST
+            self.text_speed = 4

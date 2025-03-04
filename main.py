@@ -348,8 +348,8 @@ def handle_input(event, state_manager, battle_system, player, collided_enemy,
                         player.reset_position()
                         battle_system = None
 
-    # Return updated values including the text_speed_setting
-    return selected_pause_option, selected_settings_option, selected_inventory_option, inventory_mode, battle_system, text_speed_setting
+    # Return updated values including text_speed_changed flag
+    return selected_pause_option, selected_settings_option, selected_inventory_option, inventory_mode, battle_system, text_speed_setting, text_speed_changed
 
 def handle_settings_input(event, state_manager, selected_settings_option, settings_manager):
     """
@@ -519,12 +519,11 @@ def draw_game(screen, state_manager, battle_system, map_system,
     
     elif state_manager.is_dialogue:
         # First draw the underlying world map
+        dialogue_system.update()
         current_map = map_system.get_current_map()
-        print("Drawing map under dialogue")
         current_map.draw(screen)
         
         # Then draw the dialogue box on top
-        print("Drawing dialogue box")
         dialogue_system.draw(screen)
         
     elif state_manager.is_battle:
@@ -708,8 +707,9 @@ def main():
     # Initialize map system with the player
     map_system = initialize_maps(player)
     
-    # Initialize dialogue system
+    # Initialize dialogue system with current text speed setting
     dialogue_system = DialogueSystem()
+    dialogue_system.set_text_speed(text_speed_setting)
     
     # Now that map_system exists, make sure player is properly scaled for current resolution
     player.update_scale(current_width, current_height)
@@ -756,7 +756,7 @@ def main():
                     except Exception as e:
                         print(f"Error applying display settings: {e}")
             else:
-                # Handle input for all other game states including text speed toggling
+                # Handle input for all other game states
                 updated_values = handle_input(
                     event, state_manager, battle_system, player, collided_enemy, 
                     selected_pause_option, selected_settings_option, text_speed_setting,
@@ -764,11 +764,17 @@ def main():
                 )
                 
                 # Unpack the returned values and update our local variables
-                selected_pause_option, selected_settings_option, selected_inventory_option, inventory_mode, battle_system_update, new_text_speed = updated_values
+                selected_pause_option, selected_settings_option, selected_inventory_option, inventory_mode, battle_system_update, new_text_speed, text_speed_changed = updated_values
                 
-                # Update text_speed_setting if it was changed
+                # Update text_speed_setting
                 text_speed_setting = new_text_speed
                 settings_manager.set_text_speed(text_speed_setting)
+
+                # If text speed was changed, update the systems
+                if text_speed_changed:
+                    if battle_system:
+                        battle_system.set_text_speed(text_speed_setting)
+                    dialogue_system.set_text_speed(text_speed_setting)
                 
                 # Update battle_system if it was modified
                 if battle_system_update is not None:
@@ -790,8 +796,6 @@ def main():
                             state_manager.change_state(DIALOGUE)
                             break
                 elif state_manager.is_dialogue:
-                    # Add debug output
-                    print("Advancing dialogue")
                     # Advance or end dialogue
                     if not dialogue_system.advance_dialogue():
                         state_manager.return_to_previous()
