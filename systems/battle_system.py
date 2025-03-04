@@ -363,7 +363,9 @@ class BattleSystem:
                 # Select the current target
                 target = self.targeting_system.get_selected_target()
                 if target:
+                    # Disable targeting mode
                     self.in_targeting_mode = False
+                    self.targeting_system.stop_targeting()
                     
                     # Check what we're targeting for
                     if self.current_spell:
@@ -840,11 +842,18 @@ class BattleSystem:
             
         # Handle counter passive effect after enemy attack message is shown
         if self.counter_triggered and self.turn == 1:
-            # Start counter-attack animation instead of immediately showing message
-            self.player_countering = True
-            self.counter_animation_timer = 0
-            self.counter_triggered = False
-            return
+            # Get the current enemy safely
+            if self.current_enemy_index < len(self.enemies):
+                current_enemy = self.enemies[self.current_enemy_index]
+                
+                # Start counter-attack animation
+                self.player_countering = True
+                self.counter_animation_timer = 0
+                self.counter_triggered = False
+            else:
+                # Handle error case
+                self.counter_triggered = False
+                self.turn = 0  # Return to player's turn as fallback
         
         # Handle counter-attack animation
         elif self.player_countering:
@@ -856,21 +865,35 @@ class BattleSystem:
                 # Now that counter animation is complete, display the message
                 self.set_message(self.counter_message)
                 
-                # Check if enemy was defeated by the counter
-                if self.enemy.is_defeated():
-                    # Award XP to player
-                    xp_gained = self.enemy.xp
-                    self.player.gain_experience(xp_gained)
+                # Get the current enemy safely
+                if self.current_enemy_index < len(self.enemies):
+                    current_enemy = self.enemies[self.current_enemy_index]
                     
-                    # Add XP message to the log
-                    self.message_log.append(f"You gained {xp_gained} XP!")
-                    if len(self.message_log) > self.max_log_size:
-                        self.message_log.pop(0)
-                    
-                    self.battle_over = True
-                    self.victory = True
+                    # Check if enemy was defeated by the counter
+                    if current_enemy.is_defeated():
+                        # Award XP to player
+                        xp_gained = current_enemy.xp
+                        self.player.gain_experience(xp_gained)
+                        
+                        # Add XP message to the log
+                        self.message_log.append(f"You gained {xp_gained} XP!")
+                        if len(self.message_log) > self.max_log_size:
+                            self.message_log.pop(0)
+                        
+                        # Check if all enemies are defeated
+                        if self._check_all_enemies_defeated():
+                            self.battle_over = True
+                            self.victory = True
+                        else:
+                            # Move to next enemy
+                            self.current_enemy_index += 1
+                            self.enemy_turn_processed = False
+                    else:
+                        # Switch to player's turn after counter effect
+                        self.turn = 0
+                        self.action_processing = False
                 else:
-                    # Switch to player's turn after counter effect
+                    # Safety fallback
                     self.turn = 0
                     self.action_processing = False
             return
@@ -1097,8 +1120,7 @@ class BattleSystem:
                 self.pending_message = f"You attacked {enemy_name} for {damage} damage! Enemy defeated!"
                 
                 # Check if all enemies are defeated
-                if all(enemy.is_defeated() for enemy in self.enemies):
-                    self.pending_victory = True
+                self.pending_victory = self._check_all_enemies_defeated()
             else:
                 self.pending_message = f"You attacked {enemy_name} for {damage} damage!"
         else:
@@ -1113,12 +1135,17 @@ class BattleSystem:
             return
                 
         # Check if we need to move to the next enemy
-        if self.current_enemy_index >= len(self.enemies):
+        if self.current_enemy_index < len(self.enemies):
+            current_enemy = self.enemies[self.current_enemy_index]
             # All enemies have acted, reset for next round
             self.current_enemy_index = 0
             self.turn = 0  # Back to player turn
             self.enemy_turn_processed = True
             return
+        else:
+            # Reset enemy index or handle end of enemy turns
+            self.current_enemy_index = 0
+            self.turn = 0
                 
         # Get the current enemy
         current_enemy = self.enemies[self.current_enemy_index]
