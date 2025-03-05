@@ -812,18 +812,26 @@ def main():
                         state_manager.return_to_previous()
             
             # Inside the main game loop event handling
-            if state_manager.is_battle and battle_system:
-                # Update battle animations and process turns
-                battle_system.update_animations()
-                
-                if battle_system.battle_over and battle_system.victory:
-                    # Award XP to player
-                    xp_gained = battle_system.award_experience()
+            elif state_manager.is_battle and battle_system:
+                if battle_system is None:
+                    print("Detected battle state without battle system, returning to world map")
+                    state_manager.change_state(WORLD_MAP)
+                else:
+                    # Update battle animations and process turns
+                    battle_system.update_animations()
                     
-                    # Add XP message to the log
-                    battle_system.message_log.append(f"You gained {xp_gained} XP!")
-                    if len(battle_system.message_log) > battle_system.max_log_size:
-                        battle_system.message_log.pop(0)
+                    # Check if battle is over and return to world map
+                    if battle_system is not None and battle_system.battle_over and battle_system.message_index >= len(battle_system.full_message):
+                        keys = pygame.key.get_pressed()
+                        if keys[pygame.K_RETURN]:
+                            # Only remove enemy if player won (not if they fled)
+                            if battle_system.victory:
+                                collided_enemy.kill()
+                            
+                            # Return to world map
+                            state_manager.change_state(WORLD_MAP)
+                            player.reset_position()
+                            battle_system = None
             else:
                 # Handle the case where battle_system is unexpectedly None
                 print("Warning: In battle state but battle_system is None")
@@ -859,20 +867,8 @@ def main():
                 else:
                     battle_system = BattleSystem(player, [collided_enemy], text_speed_setting)
             
-            # Update battle animations and process turns
-            battle_system.update_animations()
-            
-            if battle_system.battle_over and battle_system.victory:
-                # Award XP to player
-                xp_gained = battle_system.award_experience()
-                
-                # Add XP message to the log
-                battle_system.message_log.append(f"You gained {xp_gained} XP!")
-                if len(battle_system.message_log) > battle_system.max_log_size:
-                    battle_system.message_log.pop(0)
-            
             # Check if battle is over and return to world map
-            if battle_system.battle_over and battle_system.message_index >= len(battle_system.full_message):
+            if battle_system is not None and battle_system.battle_over and battle_system.message_index >= len(battle_system.full_message):
                 keys = pygame.key.get_pressed()
                 if keys[pygame.K_RETURN]:
                     # Only remove enemy if player won (not if they fled)
