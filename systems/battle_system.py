@@ -366,105 +366,14 @@ class BattleSystem:
                     # Disable targeting mode
                     self.in_targeting_mode = False
                     self.targeting_system.stop_targeting()
-                    
-                    # Check what we're targeting for
-                    if self.current_spell:
-                        # We're casting a spell
-                        spell = self.current_spell
-                        
-                        # Use the SP
-                        self.player.use_sp(spell.sp_cost)
-                        
-                        # Start spell animation
-                        self.player_casting = True
-                        self.animation_timer = 0
-                        self.action_processing = True
-                        
-                        # Handle spell effects
-                        if spell.effect_type == "damage":
-                            # Calculate magic damage
-                            damage = self.calculate_magic_damage(self.player, target, spell.base_power)
-                            target.take_damage(damage)
-                            
-                            # Store message for later display
-                            if target.is_defeated():
-                                self.pending_message = f"Cast {spell.name}! Dealt {damage} magic damage! Enemy defeated!"
-                                self.pending_victory = self._check_all_enemies_defeated()
-                            else:
-                                self.pending_message = f"Cast {spell.name}! Dealt {damage} magic damage!"
-                        
-                        # Clear current spell
-                        self.current_spell = None
-                        
-                    elif self.current_skill:
-                        # We're using a skill
-                        skill = self.current_skill
-                        
-                        # Apply resource costs
-                        if skill.sp_cost > 0:
-                            self.player.use_sp(skill.sp_cost)
-                        if skill.hp_cost > 0:
-                            self.player.take_damage(skill.hp_cost)
-                        
-                        # Start skill animation
-                        self.player_using_skill = True
-                        self.animation_timer = 0
-                        self.action_processing = True
-                        
-                        # Handle skill effects
-                        if skill.effect_type == "analyze":
-                            # Store the message for later display
-                            self.pending_message = f"Used {skill.name}! {target.__class__.__name__} stats:\nHP: {target.hp}/{target.max_hp}\nATK: {target.attack}\nDEF: {target.defense}\nSPD: {target.spd}\nACC: {target.acc}\nRES: {target.resilience}"
-                            
-                        # Clear current skill
-                        self.current_skill = None
-                        
-                    elif self.current_ultimate:
-                        # We're using an ultimate
-                        ultimate = self.current_ultimate
-                        
-                        # Start ultimate animation
-                        self.player_using_ultimate = True
-                        self.animation_timer = 0
-                        self.action_processing = True
-                        
-                        # Handle ultimate effects
-                        if ultimate.effect_type == "damage":
-                            # Calculate damage with power multiplier
-                            damage = int(self.player.attack * ultimate.power_multiplier)
-                            
-                            # Apply damage to target
-                            target.take_damage(damage)
-                            
-                            # Mark as used
-                            ultimate.available = False
-                            
-                            # Store message for later display
-                            if target.is_defeated():
-                                self.pending_message = f"Used {ultimate.name}! Dealt a massive {damage} damage! Enemy defeated!"
-                                self.pending_victory = self._check_all_enemies_defeated()
-                            else:
-                                self.pending_message = f"Used {ultimate.name}! Dealt a massive {damage} damage!"
-                            
-                        # Clear current ultimate
-                        self.current_ultimate = None
-                        
-                    else:
-                        # We're attacking normally
-                        self._perform_player_attack(target)
-                    
+                    # Perform attack on selected target
+                    self._perform_player_attack(target)
                 return True
                 
             elif event.key == pygame.K_ESCAPE:
                 # Cancel targeting and return to battle menu
                 self.in_targeting_mode = False
                 self.action_processing = False
-                
-                # Clear any pending abilities
-                self.current_spell = None
-                self.current_skill = None
-                self.current_ultimate = None
-                
                 return True
                 
         return False

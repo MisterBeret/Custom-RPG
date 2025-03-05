@@ -838,7 +838,7 @@ def main():
             # First check if the battle system wants to handle input directly
             if event.type == pygame.KEYDOWN:
                 if hasattr(battle_system, 'handle_player_input') and battle_system.handle_player_input(event):
-                    return selected_pause_option, selected_settings_option, selected_inventory_option, inventory_mode, battle_system, text_speed_setting, text_speed_changed  # Input was handled
+                    continue  # Input was handled, skip other processing
             
             # Update battle animations and process turns
             battle_system.update_animations()
