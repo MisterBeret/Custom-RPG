@@ -14,6 +14,7 @@ from constants import (
     DISPLAY_WINDOWED, DISPLAY_BORDERLESS, DISPLAY_FULLSCREEN
 )
 from data.encounter_pools import initialize_encounter_pools
+from map_initialization import initialize_maps
 from game_states import GameStateManager
 from entities.player import Player
 from entities.enemy import Enemy
@@ -24,8 +25,11 @@ from systems.targeting_system import TargetingSystem
 from systems.inventory import get_item_effect
 from systems.map_system import MapSystem, MapArea
 from systems.dialogue_system import DialogueSystem
+from systems.settings_manager import SettingsManager
 import utils
-from map_initialization import initialize_maps
+from utils import scale_position, scale_dimensions, scale_font_size
+
+
 
 """
 Updated handle_input function in main.py to support spell casting.
@@ -183,7 +187,7 @@ def handle_input(event, state_manager, battle_system, player, collided_enemy,
         
     # Handle keyboard input for battle
     elif state_manager.is_battle and battle_system:
-        if not battle_system.battle_over:
+        if battle_system and not battle_system.battle_over:
             if event.type == pygame.KEYDOWN:
                 # Handle spell menu navigation if active
                 if battle_system.in_spell_menu:
@@ -355,9 +359,11 @@ def handle_input(event, state_manager, battle_system, player, collided_enemy,
                         # Return to world map
                         state_manager.change_state(WORLD_MAP)
                         player.reset_position()
-                        # Nullify the battle system state and return that value to the main scope
+                        # Set battle_system to None
                         battle_system = None
-                        return battle_system
+                        
+                        # This None value will be returned and assigned in the main loop
+                        return selected_pause_option, selected_settings_option, selected_inventory_option, inventory_mode, battle_system, text_speed_setting, text_speed_changed
 
     # Return updated values including text_speed_changed flag
     return selected_pause_option, selected_settings_option, selected_inventory_option, inventory_mode, battle_system, text_speed_setting, text_speed_changed
@@ -442,7 +448,6 @@ def draw_settings_menu(screen, settings_manager, selected_settings_option, font)
         selected_settings_option: The currently selected option
         font: The font to use for text
     """
-    from utils import scale_position, scale_dimensions
     from constants import ORIGINAL_WIDTH, ORIGINAL_HEIGHT, SCREEN_WIDTH, SCREEN_HEIGHT, WHITE, GRAY
     
     try:
@@ -502,200 +507,196 @@ def draw_settings_menu(screen, settings_manager, selected_settings_option, font)
 
 def draw_game(screen, state_manager, battle_system, map_system,
              selected_pause_option, selected_settings_option, text_speed_setting,
-             selected_inventory_option, inventory_mode, font, settings_manager,
+             selected_inventory_option, inventory_mode, font, settings_manager=None,
              dialogue_system=None):
     """
     Draw the game based on the current state.
-    
-    Args:
-        screen: The pygame surface to draw on
-        state_manager: The game state manager
-        battle_system: The current battle system (if in battle)
-        map_system: The map system
-        selected_pause_option: The currently selected pause menu option
-        selected_settings_option: The currently selected settings menu option
-        text_speed_setting: The current text speed setting
-        selected_inventory_option: The currently selected inventory item
-        inventory_mode: Whether viewing inventory from pause or battle
-        font: The pygame font to use for text
-        settings_manager: The settings manager
     """
     # First clear the screen - this is essential
     screen.fill(BLACK)
     
     if state_manager.is_world_map:
-        # Draw the current map, which handles its own background, entities, and boundaries
+        # Draw the current map, which handles all entities
         current_map = map_system.get_current_map()
         current_map.draw(screen)
     
     elif state_manager.is_dialogue:
-        # First draw the underlying world map
-        dialogue_system.update()
+        # First draw the map, then draw dialogue on top
         current_map = map_system.get_current_map()
         current_map.draw(screen)
-        
-        # Then draw the dialogue box on top
-        dialogue_system.draw(screen)
+        if dialogue_system:
+            dialogue_system.draw(screen)
         
     elif state_manager.is_battle:
         if battle_system:
             battle_system.draw(screen)
             
+    # Draw menu states (using helper functions)
     elif state_manager.is_pause:
-        # First draw the underlying world map
+        # Draw the base state first
         current_map = map_system.get_current_map()
         current_map.draw(screen)
-            
-        # Draw semi-transparent overlay
-        overlay = pygame.Surface((screen.get_width(), screen.get_height()), pygame.SRCALPHA)
-        overlay.fill((0, 0, 0, 128))  # Semi-transparent black (50% opacity)
-        screen.blit(overlay, (0, 0))
         
-        # Use the scaling utility for pause menu
-        from utils import scale_position
-        
-        current_width, current_height = screen.get_size()
-        original_width, original_height = 800, 600
-        
-        # Scale menu positions
-        menu_title_pos = scale_position(SCREEN_WIDTH//2, 200, original_width, original_height, current_width, current_height)
-        option_base_pos = scale_position(SCREEN_WIDTH//2 - 50, 250, original_width, original_height, current_width, current_height)
-        option_spacing = int(40 * (current_height / original_height))
-        
-        # Draw pause menu
-        menu_title = font.render("PAUSE", True, WHITE)
-        screen.blit(menu_title, (menu_title_pos[0] - menu_title.get_width()//2, menu_title_pos[1]))
-        
-        for i, option in enumerate(PAUSE_OPTIONS):
-            if i == selected_pause_option:
-                option_text = font.render(f"> {option}", True, WHITE)
-            else:
-                option_text = font.render(f"  {option}", True, GRAY)
-            screen.blit(option_text, (option_base_pos[0], option_base_pos[1] + i * option_spacing))
+        # Draw the pause menu overlay
+        _draw_overlay(screen)
+        _draw_pause_menu(screen, selected_pause_option, font)
             
     elif state_manager.is_settings:
-        # First draw the underlying world map
+        # Draw the base state first
         current_map = map_system.get_current_map()
         current_map.draw(screen)
         
-        # Draw the settings menu with resolution options
-        draw_settings_menu(screen, settings_manager, selected_settings_option, font)
+        # Draw the settings menu overlay
+        _draw_overlay(screen)
+        _draw_settings_menu(screen, selected_settings_option, text_speed_setting, font)
         
     elif state_manager.is_inventory:
-        # First draw the underlying world map
+        # Draw the base state first
         current_map = map_system.get_current_map()
         current_map.draw(screen)
         
-        # Use scaling utility for inventory menu
-        from utils import scale_position, scale_dimensions
-        
-        current_width, current_height = screen.get_size()
-        original_width, original_height = 800, 600
-        
-        # Draw semi-transparent overlay
-        overlay = pygame.Surface((current_width, current_height), pygame.SRCALPHA)
-        overlay.fill((0, 0, 0, 128))  # Semi-transparent black (50% opacity)
-        screen.blit(overlay, (0, 0))
-        
-        # Scale inventory menu positions
-        menu_title_pos = scale_position(SCREEN_WIDTH//2, 150, original_width, original_height, current_width, current_height)
-        header_pos = scale_position(SCREEN_WIDTH//2 - 200, 190, original_width, original_height, current_width, current_height)
-        line_start_pos = scale_position(SCREEN_WIDTH//2 - 200, 220, original_width, original_height, current_width, current_height)
-        line_end_pos = scale_position(SCREEN_WIDTH//2 + 200, 220, original_width, original_height, current_width, current_height)
-        item_base_pos = scale_position(SCREEN_WIDTH//2 - 200, 230, original_width, original_height, current_width, current_height)
-        qty_pos_x = scale_position(SCREEN_WIDTH//2 - 50, 0, original_width, original_height, current_width, current_height)[0]
-        desc_pos_x = scale_position(SCREEN_WIDTH//2 - 25, 0, original_width, original_height, current_width, current_height)[0]
-        item_spacing = int(30 * (current_height / original_height))
-        
-        # Draw inventory menu
-        menu_title = font.render("INVENTORY", True, WHITE)
-        screen.blit(menu_title, (menu_title_pos[0] - menu_title.get_width()//2, menu_title_pos[1]))
-        
-        # Get a reference to the player from the current map
-        current_map = map_system.get_current_map()
+        # Draw the inventory menu overlay
+        _draw_overlay(screen)
+        # Get player from the current map
         player = None
         for entity in current_map.entities:
             if isinstance(entity, Player):
                 player = entity
                 break
-        
+                
         if player:
-            # Get item names and add BACK option
-            item_names = player.inventory.get_item_names()
-            options = item_names + ["BACK"]
-            
-            # Draw inventory header
-            header_text = font.render("ITEM           QTY   DESCRIPTION", True, WHITE)
-            screen.blit(header_text, (header_pos[0], header_pos[1]))
-            
-            # Draw horizontal line under header
-            pygame.draw.line(screen, WHITE, line_start_pos, line_end_pos)
-            
-            # Draw each item with quantity and description
-            for i, item_name in enumerate(item_names):
-                # Get the item and its quantity
-                quantity = player.inventory.get_quantity(item_name)
-                item = get_item_effect(item_name)
-                
-                # Prepare display text with highlighted selection
-                if i == selected_inventory_option:
-                    name_text = font.render(f"> {item_name}", True, WHITE)
-                else:
-                    name_text = font.render(f"  {item_name}", True, GRAY)
-                    
-                # Draw item name
-                screen.blit(name_text, (item_base_pos[0], item_base_pos[1] + i * item_spacing))
-                
-                # Draw quantity
-                qty_text = font.render(f"{quantity:2d}", True, GRAY if i != selected_inventory_option else WHITE)
-                screen.blit(qty_text, (qty_pos_x, item_base_pos[1] + i * item_spacing))
-                
-                # Draw description (truncated if needed)
-                if item:
-                    desc = item.description
-                    if len(desc) > 30:
-                        desc = desc[:27] + "..."
-                    desc_text = font.render(desc, True, GRAY if i != selected_inventory_option else WHITE)
-                    screen.blit(desc_text, (desc_pos_x, item_base_pos[1] + i * item_spacing))
-            
-            # Draw BACK option
-            if len(options) - 1 == selected_inventory_option:
-                back_text = font.render(f"> BACK", True, WHITE)
-            else:
-                back_text = font.render(f"  BACK", True, GRAY)
-            screen.blit(back_text, (item_base_pos[0], item_base_pos[1] + len(item_names) * item_spacing))
-            
-            # Draw context-sensitive help
-            help_y = item_base_pos[1] + (len(options) + 1) * item_spacing
-            if inventory_mode == "pause":
-                help_text = font.render("Select an item to use outside of battle", True, YELLOW)
-            else:
-                help_text = font.render("Select an item to use in battle", True, YELLOW)
-            screen.blit(help_text, (item_base_pos[0], help_y))
+            _draw_inventory(screen, player, selected_inventory_option, inventory_mode, font)
 
+def _draw_base_state(screen, state_manager, battle_system, enemies):
+    """Draw the underlying state (world map or battle)."""
+    if state_manager.is_world_map or state_manager.previous_state == WORLD_MAP:
+        current_map = map_system.get_current_map()
+        current_map.draw(screen)
+    elif (state_manager.is_battle or state_manager.previous_state == BATTLE) and battle_system:
+        battle_system.draw(screen)
+
+def _draw_overlay(screen):
+    """Draw a semi-transparent overlay for menus."""
+    overlay = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.SRCALPHA)
+    overlay.fill((0, 0, 0, 128))  # Semi-transparent black
+    screen.blit(overlay, (0, 0))
+
+def _draw_pause_menu(screen, selected_pause_option, font):
+    """Draw the pause menu."""
+    # Add the overlay
+    _draw_overlay(screen)
+    
+    # Draw menu title
+    menu_title = font.render("PAUSE", True, WHITE)
+    screen.blit(menu_title, (SCREEN_WIDTH//2 - menu_title.get_width()//2, 200))
+    
+    # Draw menu options
+    for i, option in enumerate(PAUSE_OPTIONS):
+        if i == selected_pause_option:
+            option_text = font.render(f"> {option}", True, WHITE)
+        else:
+            option_text = font.render(f"  {option}", True, GRAY)
+        screen.blit(option_text, (SCREEN_WIDTH//2 - 50, 250 + i*40))
+
+def _draw_settings_menu(screen, selected_settings_option, text_speed_setting, font):
+    """Draw the settings menu."""
+    # Add the overlay
+    _draw_overlay(screen)
+    
+    # Draw menu title
+    menu_title = font.render("SETTINGS", True, WHITE)
+    screen.blit(menu_title, (SCREEN_WIDTH//2 - menu_title.get_width()//2, 200))
+    
+    # Draw TEXT SPEED option with current setting
+    if selected_settings_option == 0:
+        option_text = font.render(f"> TEXT SPEED: {text_speed_setting}", True, WHITE)
+    else:
+        option_text = font.render(f"  TEXT SPEED: {text_speed_setting}", True, GRAY)
+    screen.blit(option_text, (SCREEN_WIDTH//2 - 100, 250))
+    
+    # Draw BACK option
+    if selected_settings_option == 1:
+        option_text = font.render(f"> {SETTINGS_OPTIONS[1]}", True, WHITE)
+    else:
+        option_text = font.render(f"  {SETTINGS_OPTIONS[1]}", True, GRAY)
+    screen.blit(option_text, (SCREEN_WIDTH//2 - 100, 290))
+
+def _draw_inventory(screen, player, selected_inventory_option, inventory_mode, font):
+    """Draw the inventory menu."""
+    # Add the overlay
+    _draw_overlay(screen)
+    
+    # Draw menu title
+    menu_title = font.render("INVENTORY", True, WHITE)
+    screen.blit(menu_title, (SCREEN_WIDTH//2 - menu_title.get_width()//2, 150))
+    
+    # Get item names and add BACK option
+    item_names = player.inventory.get_item_names()
+    options = item_names + ["BACK"]
+    
+    # Draw inventory header
+    header_text = font.render("ITEM           QTY   DESCRIPTION", True, WHITE)
+    screen.blit(header_text, (SCREEN_WIDTH//2 - 200, 190))
+    
+    # Draw horizontal line under header
+    pygame.draw.line(screen, WHITE, (SCREEN_WIDTH//2 - 200, 220), (SCREEN_WIDTH//2 + 200, 220))
+    
+    # Draw each item with quantity and description
+    for i, item_name in enumerate(item_names):
+        # Get the item and its quantity
+        quantity = player.inventory.get_quantity(item_name)
+        item = get_item_effect(item_name)
+        
+        # Prepare display text with highlighted selection
+        if i == selected_inventory_option:
+            name_text = font.render(f"> {item_name}", True, WHITE)
+        else:
+            name_text = font.render(f"  {item_name}", True, GRAY)
+            
+        # Draw item name
+        screen.blit(name_text, (SCREEN_WIDTH//2 - 200, 230 + i*30))
+        
+        # Draw quantity
+        qty_text = font.render(f"{quantity:2d}", True, GRAY if i != selected_inventory_option else WHITE)
+        screen.blit(qty_text, (SCREEN_WIDTH//2 - 50, 230 + i*30))
+        
+        # Draw description (truncated if needed)
+        if item:
+            desc = item.description
+            if len(desc) > 30:
+                desc = desc[:27] + "..."
+            desc_text = font.render(desc, True, GRAY if i != selected_inventory_option else WHITE)
+            screen.blit(desc_text, (SCREEN_WIDTH//2 - 25, 230 + i*30))
+    
+    # Draw BACK option
+    if len(options) - 1 == selected_inventory_option:
+        back_text = font.render(f"> BACK", True, WHITE)
+    else:
+        back_text = font.render(f"  BACK", True, GRAY)
+    screen.blit(back_text, (SCREEN_WIDTH//2 - 200, 230 + len(item_names)*30))
+    
+    # Draw context-sensitive help
+    if inventory_mode == "pause":
+        help_text = font.render("Select an item to use outside of battle", True, YELLOW)
+    else:
+        help_text = font.render("Select an item to use in battle", True, YELLOW)
+    screen.blit(help_text, (SCREEN_WIDTH//2 - 200, 230 + (len(options) + 1)*30))
 
 def main():
+    """Main function to run the game."""
     # Initialize Pygame
     pygame.init()
     
-    # To prevent double processing of ENTER key
-    last_key_time = 0
-    key_cooldown = 200  # milliseconds
-
     # Initialize settings manager
-    from systems.settings_manager import SettingsManager
     settings_manager = SettingsManager()
     
-    # Create the screen with initial settings (no map_system yet)
-    screen = apply_display_settings(settings_manager, None)  # Pass None for now
+    # Create the screen
+    screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT))
     pygame.display.set_caption("My RPG Game")
     
-    # Initialize fonts - these will be recreated when resolution changes
+    # Initialize fonts
     pygame.font.init()
-    current_width, current_height = screen.get_size()
-    font_size = utils.scale_font_size(24, ORIGINAL_WIDTH, ORIGINAL_HEIGHT, current_width, current_height)
-    font = pygame.font.SysFont('Arial', font_size)
-    pygame.display.set_caption("My RPG Game")
+    font = pygame.font.SysFont('Arial', 24)
     
     # Clock for controlling the frame rate
     clock = pygame.time.Clock()
@@ -703,7 +704,7 @@ def main():
     # Game state management
     state_manager = GameStateManager()
     
-    # Game settings from settings manager
+    # Game settings
     text_speed_setting = settings_manager.get_text_speed()
     
     # Menu options
@@ -712,20 +713,13 @@ def main():
     selected_inventory_option = 0
     inventory_mode = "pause"
     
-    # Create a player using original dimensions
-    player = Player(ORIGINAL_WIDTH // 2, ORIGINAL_HEIGHT // 2)
-    
-    # Initialize map system with the player
+    # Create player and initialize map system
+    player = Player(SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2)
     map_system = initialize_maps(player)
     
-    # Initialize dialogue system with current text speed setting
+    # Initialize dialogue system
     dialogue_system = DialogueSystem()
     dialogue_system.set_text_speed(text_speed_setting)
-    
-    # Now that map_system exists, make sure player is properly scaled for current resolution
-    player.update_scale(current_width, current_height)
-
-    screen = apply_display_settings(settings_manager, map_system)
     
     # Battle system (will be initialized when battle starts)
     battle_system = None
@@ -746,96 +740,44 @@ def main():
                 elif state_manager.is_pause:
                     state_manager.return_to_previous()
                 elif state_manager.is_settings or state_manager.is_inventory:
-                    # Always return to the previous state (either PAUSE or BATTLE)
                     state_manager.return_to_previous()
-            
-            # Handle settings input specifically for resolution and display mode
-            if state_manager.is_settings:
-                new_selected_option, display_changed = handle_settings_input(
-                    event, state_manager, selected_settings_option, settings_manager
-                )
-                selected_settings_option = new_selected_option
-                
-                # If display settings changed, update the screen and all entities
-                if display_changed:
-                    try:
-                        screen = apply_display_settings(settings_manager, map_system)
-                        # Recreate font with scaled size
-                        font_size = utils.scale_font_size(24, ORIGINAL_WIDTH, ORIGINAL_HEIGHT, 
-                                                        *settings_manager.get_resolution())
-                        font = pygame.font.SysFont('Arial', font_size)
-                    except Exception as e:
-                        print(f"Error applying display settings: {e}")
-            else:
-                # Handle input for all other game states
-                updated_values = handle_input(
-                    event, state_manager, battle_system, player, collided_enemy, 
-                    selected_pause_option, selected_settings_option, text_speed_setting,
-                    selected_inventory_option, inventory_mode
-                )
-                
-                # Unpack the returned values and update our local variables
-                selected_pause_option, selected_settings_option, selected_inventory_option, inventory_mode, battle_system_update, new_text_speed, text_speed_changed = updated_values
-                
-                # Update text_speed_setting
-                text_speed_setting = new_text_speed
-                settings_manager.set_text_speed(text_speed_setting)
-
-                # If text speed was changed, update the systems
-                if text_speed_changed:
-                    if battle_system:
-                        battle_system.set_text_speed(text_speed_setting)
-                    dialogue_system.set_text_speed(text_speed_setting)
-                
-                # Update battle_system if it was modified
-                if battle_system_update is not None:
-                    battle_system = battle_system_update
-        
-            # Handle ENTER key for interactions
-            current_time = pygame.time.get_ticks()
-            if event.type == pygame.KEYDOWN and event.key == pygame.K_RETURN:
-                if current_time - last_key_time > key_cooldown:
-                    last_key_time = current_time
-                if state_manager.is_world_map:
-                    # Get the current map and check for nearby NPCs
-                    current_map = map_system.get_current_map()
                     
+            # Handle ENTER key for interactions (dialogue, etc.)
+            if event.type == pygame.KEYDOWN and event.key == pygame.K_RETURN:
+                if state_manager.is_world_map:
+                    # Check for nearby NPCs
+                    current_map = map_system.get_current_map()
                     for npc in current_map.npcs:
                         if npc.can_interact(player):
-                            # Start dialogue with this NPC
                             npc.interact(dialogue_system)
                             state_manager.change_state(DIALOGUE)
                             break
                 elif state_manager.is_dialogue:
-                    # Advance or end dialogue
                     if not dialogue_system.advance_dialogue():
                         state_manager.return_to_previous()
             
-            # Inside the main game loop event handling
-            elif state_manager.is_battle and battle_system:
-                if battle_system is None:
-                    print("Detected battle state without battle system, returning to world map")
-                    state_manager.change_state(WORLD_MAP)
-                else:
-                    # Update battle animations and process turns
-                    battle_system.update_animations()
-                    
-                    # Check if battle is over and return to world map
-                    if battle_system is not None and battle_system.battle_over and battle_system.message_index >= len(battle_system.full_message):
-                        keys = pygame.key.get_pressed()
-                        if keys[pygame.K_RETURN]:
-                            # Only remove enemy if player won (not if they fled)
-                            if battle_system.victory:
-                                collided_enemy.kill()
-                            
-                            # Return to world map
-                            state_manager.change_state(WORLD_MAP)
-                            player.reset_position()
-                            battle_system = None
-            else:
-                # Handle the case where battle_system is unexpectedly None
-                print("Warning: In battle state but battle_system is None")
-                state_manager.change_state(WORLD_MAP)  # Recover by going back to world map
+            # Handle input for all game states
+            updated_values = handle_input(
+                event, state_manager, battle_system, player, collided_enemy, 
+                selected_pause_option, selected_settings_option, text_speed_setting,
+                selected_inventory_option, inventory_mode
+            )
+            
+            # Unpack the returned values (now 7 values)
+            selected_pause_option, selected_settings_option, selected_inventory_option, inventory_mode, battle_system_update, new_text_speed, text_speed_changed = updated_values
+            
+            # Update text_speed_setting
+            text_speed_setting = new_text_speed
+            
+            # Update systems if text speed changed
+            if text_speed_changed:
+                if battle_system:
+                    battle_system.set_text_speed(text_speed_setting)
+                dialogue_system.set_text_speed(text_speed_setting)
+            
+            # Update battle_system if it was modified
+            if battle_system_update is not None:
+                battle_system = battle_system_update
         
         # Update game logic based on current state
         if state_manager.is_world_map:
@@ -844,14 +786,13 @@ def main():
             
             # Update player with current map for boundary checking
             collided_enemy = player.update(current_map.enemies, current_map)
-
-            # Check if we have an encounter from map update
+            
+            # Check for map transitions or encounters
             map_update_result = current_map.update(player, map_system.encounter_manager)
             
             if isinstance(map_update_result, list):
                 # We got a list of enemies - trigger battle
                 encountered_enemies = map_update_result
-                # Switch to battle state
                 state_manager.change_state(BATTLE)
                 battle_system = BattleSystem(player, encountered_enemies, text_speed_setting)
             elif map_update_result:
@@ -859,49 +800,41 @@ def main():
                 new_map, entry_side = map_update_result
                 map_system.transition_player(player, new_map, entry_side)
             elif collided_enemy:
-                # Direct collision with an enemy (old system)
+                # Direct collision with an enemy
                 state_manager.change_state(BATTLE)
-                # Check if collided_enemy is a list or single enemy
-                if isinstance(collided_enemy, list):
-                    battle_system = BattleSystem(player, collided_enemy, text_speed_setting)
-                else:
-                    battle_system = BattleSystem(player, [collided_enemy], text_speed_setting)
+                battle_system = BattleSystem(player, collided_enemy, text_speed_setting)
             
-            # Check if battle is over and return to world map
-            if battle_system is not None and battle_system.battle_over and battle_system.message_index >= len(battle_system.full_message):
+        elif state_manager.is_dialogue:
+            # Update dialogue animations
+            dialogue_system.update()
+            
+        elif state_manager.is_battle and battle_system:
+            # Update battle animations and process turns
+            battle_system.update_animations()
+            
+            # Check if battle is over
+            if battle_system and battle_system.battle_over and battle_system.message_index >= len(battle_system.full_message):
                 keys = pygame.key.get_pressed()
                 if keys[pygame.K_RETURN]:
-                    # Only remove enemy if player won (not if they fled)
-                    if battle_system.victory:
-                        # Get current map and remove the defeated enemy
-                        current_map = map_system.get_current_map()
-                        battle_system.enemy.kill()
-                    
                     # Return to world map
                     state_manager.change_state(WORLD_MAP)
                     player.reset_position()
-                    # Nullify the battle system state and return that value to the main scope
                     battle_system = None
-                    return battle_system
         
         # Draw the current game state
         draw_game(
-            screen, state_manager, battle_system, map_system, 
+            screen, state_manager, battle_system, map_system,
             selected_pause_option, selected_settings_option, text_speed_setting,
             selected_inventory_option, inventory_mode, font, settings_manager,
             dialogue_system
         )
         
-        # Flip the display
+        # Flip the display and maintain frame rate
         pygame.display.flip()
-        
-        # Maintain 60 frames per second
         clock.tick(60)
     
-    # Save settings before quitting
+    # Save settings and quit
     settings_manager.save_settings()
-    
-    # Quit the game
     pygame.quit()
     sys.exit()
 
