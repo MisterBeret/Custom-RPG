@@ -307,7 +307,10 @@ class BattleSystem:
                     # With multiple enemies, enter targeting mode
                     self.in_targeting_mode = True
                     self.targeting_system.start_targeting(self.enemies)
-                    self.set_message("Select a target.")
+                    # Don't add to log, just set display message temporarily
+                    self.displayed_message = "Select a target"
+                    self.full_message = self.displayed_message
+                    self.message_index = len(self.full_message)
                     self.action_processing = False  # Keep accepting input for target selection
                     
             elif action == "DEFEND":
@@ -342,12 +345,6 @@ class BattleSystem:
     def handle_player_input(self, event):
         """
         Handle player input for targeting and other interactive states.
-        
-        Args:
-            event: The pygame event
-            
-        Returns:
-            bool: True if input was handled, False otherwise
         """
         # Only handle inputs when in targeting mode
         if self.in_targeting_mode and event.type == pygame.KEYDOWN:
@@ -368,12 +365,22 @@ class BattleSystem:
                     self.targeting_system.stop_targeting()
                     # Perform attack on selected target
                     self._perform_player_attack(target)
+                    # Restore the previous message from log if needed
+                    if len(self.message_log) > 0:
+                        self.full_message = self.message_log[-1]
+                        self.displayed_message = self.full_message
+                        self.message_index = len(self.full_message)
                 return True
                 
             elif event.key == pygame.K_ESCAPE:
                 # Cancel targeting and return to battle menu
                 self.in_targeting_mode = False
                 self.action_processing = False
+                # Restore the previous message from log
+                if len(self.message_log) > 0:
+                    self.full_message = self.message_log[-1]
+                    self.displayed_message = self.full_message
+                    self.message_index = len(self.full_message)
                 return True
                 
         return False

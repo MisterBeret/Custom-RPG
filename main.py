@@ -834,11 +834,11 @@ def main():
                 else:
                     battle_system = BattleSystem(player, [collided_enemy], text_speed_setting)
             
-        elif state_manager.is_battle and battle_system:
-            # First check if the battle system wants to handle input directly
+        # Inside the main game loop event handling
+        if state_manager.is_battle and battle_system:
             if event.type == pygame.KEYDOWN:
-                if hasattr(battle_system, 'handle_player_input') and battle_system.handle_player_input(event):
-                    continue  # Input was handled, skip other processing
+                if battle_system.in_targeting_mode:
+                    battle_system.handle_player_input(event)
             
             # Update battle animations and process turns
             battle_system.update_animations()
