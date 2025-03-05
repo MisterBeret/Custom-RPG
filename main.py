@@ -341,16 +341,23 @@ def handle_input(event, state_manager, battle_system, player, collided_enemy,
                         battle_system.message_index = len(battle_system.full_message)
                         
                 # Check if battle has ended and player pressed ENTER to continue
-                if battle_system.battle_over and battle_system.message_index >= len(battle_system.full_message):
-                    if event.key == pygame.K_RETURN or event.key == pygame.K_SPACE:
+                if battle_system and battle_system.battle_over and battle_system.message_index >= len(battle_system.full_message):
+                    keys = pygame.key.get_pressed()
+                    if keys[pygame.K_RETURN]:
                         # Only remove enemy if player won (not if they fled)
                         if battle_system.victory:
-                            collided_enemy.kill()
+                            # Get current map and remove the defeated enemy
+                            current_map = map_system.get_current_map()
+                            for enemy in battle_system.enemies:
+                                if enemy.is_defeated():
+                                    enemy.kill()
                         
                         # Return to world map
                         state_manager.change_state(WORLD_MAP)
                         player.reset_position()
+                        # Nullify the battle system state and return that value to the main scope
                         battle_system = None
+                        return battle_system
 
     # Return updated values including text_speed_changed flag
     return selected_pause_option, selected_settings_option, selected_inventory_option, inventory_mode, battle_system, text_speed_setting, text_speed_changed
@@ -803,6 +810,24 @@ def main():
                     # Advance or end dialogue
                     if not dialogue_system.advance_dialogue():
                         state_manager.return_to_previous()
+            
+            # Inside the main game loop event handling
+            if state_manager.is_battle and battle_system:
+                # Update battle animations and process turns
+                battle_system.update_animations()
+                
+                if battle_system.battle_over and battle_system.victory:
+                    # Award XP to player
+                    xp_gained = battle_system.award_experience()
+                    
+                    # Add XP message to the log
+                    battle_system.message_log.append(f"You gained {xp_gained} XP!")
+                    if len(battle_system.message_log) > battle_system.max_log_size:
+                        battle_system.message_log.pop(0)
+            else:
+                # Handle the case where battle_system is unexpectedly None
+                print("Warning: In battle state but battle_system is None")
+                state_manager.change_state(WORLD_MAP)  # Recover by going back to world map
         
         # Update game logic based on current state
         if state_manager.is_world_map:
@@ -834,12 +859,6 @@ def main():
                 else:
                     battle_system = BattleSystem(player, [collided_enemy], text_speed_setting)
             
-        # Inside the main game loop event handling
-        if state_manager.is_battle and battle_system:
-            if event.type == pygame.KEYDOWN:
-                if battle_system.in_targeting_mode:
-                    battle_system.handle_player_input(event)
-            
             # Update battle animations and process turns
             battle_system.update_animations()
             
@@ -865,7 +884,9 @@ def main():
                     # Return to world map
                     state_manager.change_state(WORLD_MAP)
                     player.reset_position()
+                    # Nullify the battle system state and return that value to the main scope
                     battle_system = None
+                    return battle_system
         
         # Draw the current game state
         draw_game(

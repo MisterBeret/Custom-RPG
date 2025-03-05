@@ -1287,8 +1287,8 @@ class BattleSystem:
         
         # Draw battle options or spell/skill menu
         if self.turn == 0 and not self.battle_over and not self.player_attacking and not self.enemy_attacking and not self.player_fleeing and not self.player_casting and not self.player_using_skill and not self.player_using_ultimate and self.action_delay == 0:
-            # Only display UI when the text is fully displayed
-            if self.message_index >= len(self.full_message):
+            # Only display UI when the text is fully displayed AND not currently processing an action
+            if self.message_index >= len(self.full_message) and not self.action_processing:
                 if self.in_spell_menu:
                     self._draw_spell_menu(screen, font, small_font)
                 elif self.in_skill_menu:
