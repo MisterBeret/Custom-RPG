@@ -343,9 +343,6 @@ class BattleSystem:
                 self.action_processing = False
 
     def handle_player_input(self, event):
-        """
-        Handle player input for targeting and other interactive states.
-        """
         # Only handle inputs when in targeting mode
         if self.in_targeting_mode and event.type == pygame.KEYDOWN:
             if event.key == pygame.K_LEFT or event.key == pygame.K_RIGHT:
@@ -355,7 +352,7 @@ class BattleSystem:
                 else:
                     self.targeting_system.next_target()
                 return True
-                
+                    
             elif event.key == pygame.K_RETURN or event.key == pygame.K_SPACE:
                 # Select the current target
                 target = self.targeting_system.get_selected_target()
@@ -365,24 +362,16 @@ class BattleSystem:
                     self.targeting_system.stop_targeting()
                     # Perform attack on selected target
                     self._perform_player_attack(target)
-                    # Restore the previous message from log if needed
-                    if len(self.message_log) > 0:
-                        self.full_message = self.message_log[-1]
-                        self.displayed_message = self.full_message
-                        self.message_index = len(self.full_message)
                 return True
-                
+                    
             elif event.key == pygame.K_ESCAPE:
                 # Cancel targeting and return to battle menu
                 self.in_targeting_mode = False
-                self.action_processing = False
                 # Restore the previous message from log
                 if len(self.message_log) > 0:
                     self.full_message = self.message_log[-1]
                     self.displayed_message = self.full_message
-                    self.message_index = len(self.full_message)
                 return True
-                
         return False
     
     def cast_spell(self, spell_name):
