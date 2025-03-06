@@ -318,7 +318,7 @@ class BattleSystem:
                 self.set_message("You're defending! Incoming damage reduced and evasion increased!")
                 # Reset the action delay timer
                 self.action_delay = 0
-                # Make sure we're setting action_processing to True
+                # Make sure we're setting action_processing to True to prevent multiple actions
                 self.action_processing = True
                 
             elif action == "RUN":
@@ -367,6 +367,8 @@ class BattleSystem:
             elif event.key == pygame.K_ESCAPE:
                 # Cancel targeting and return to battle menu
                 self.in_targeting_mode = False
+                self.targeting_system.stop_targeting()
+                self.action_processing = False  # Reset to allow new actions
                 # Restore the previous message from log
                 if len(self.message_log) > 0:
                     self.full_message = self.message_log[-1]
@@ -448,6 +450,8 @@ class BattleSystem:
                     
                 # Set pending message
                 self.pending_message = f"Cast {spell_name}! Restored {actual_healing} HP!"
+            
+            self.action_processing = True
                 
             return True
         
@@ -517,7 +521,9 @@ class BattleSystem:
                 self.pending_message = f"Used {skill_name}! {target.__class__.__name__} stats:\nHP: {target.hp}/{target.max_hp}\nATK: {target.attack}\nDEF: {target.defense}\nSPD: {target.spd}\nACC: {target.acc}\nRES: {target.resilience}"
                 
             # Add more skill effect types here as needed
-                
+
+            self.action_processing = True
+            
             return True
         
         return False
@@ -587,6 +593,8 @@ class BattleSystem:
                     self.pending_message = f"Used {ultimate_name}! Dealt a massive {damage} damage!"
                 
             # Add more ultimate effect types here as needed
+
+            self.action_processing = True
                 
             return True
         
@@ -954,21 +962,27 @@ class BattleSystem:
                     self.set_message(self.pending_message)
                     self.counter_triggered = False
                 
-                # Check if player was defeated
                 if self.player.is_defeated():
                     self.set_message(f"Enemy attacked for {self.pending_damage} damage! You were defeated!")
                     self.battle_over = True
                     self.counter_triggered = False
                 else:
-                    # Move to the next enemy's turn
+                    # End current enemy's turn
                     current_enemy = self.enemies[self.current_enemy_index]
                     current_enemy.end_turn()
+                    
+                    # Move to the next enemy
                     self.current_enemy_index += 1
                     
-                    # If no counter was triggered, immediately start the next enemy's turn
-                    if not self.counter_triggered:
-                        self.enemy_attacking = False
+                    # If there are more enemies to process
+                    if self.current_enemy_index < len(self.enemies):
+                        # Process the next enemy on the next frame
                         self.enemy_turn_processed = False
+                    else:
+                        # All enemies have acted, back to player's turn
+                        self.current_enemy_index = 0
+                        self.turn = 0
+                        self.action_processing = False
         
         # Handle fleeing animation
         elif self.player_fleeing:
@@ -990,13 +1004,14 @@ class BattleSystem:
                 # Switch to enemy turn
                 self.turn = 1
                 self.enemy_turn_processed = False  # Reset the flag
-                # Add this line:
                 self.action_processing = False
         
         # Process enemy turn if it's enemy's turn and no animation is active
         elif self.turn == 1 and not self.enemy_attacking and not self.enemy_turn_processed:
             self.process_enemy_turn()
             self.enemy_turn_processed = True  # Set the flag to prevent multiple attacks
+
+        self._ensure_battle_flow_consistency()
                     
     def _perform_player_attack(self, target_enemy):
         """
@@ -1008,6 +1023,7 @@ class BattleSystem:
         # Start player attack animation
         self.player_attacking = True
         self.animation_timer = 0
+        self.action_processing = True
         
         # Calculate and use hit chance
         hit_chance = self.calculate_hit_chance(self.player, target_enemy)
@@ -1036,18 +1052,14 @@ class BattleSystem:
         if self.turn != 1 or self.enemy_attacking or self.enemy_turn_processed:
             return
                 
-        # Check if we need to move to the next enemy
-        if self.current_enemy_index < len(self.enemies):
-            current_enemy = self.enemies[self.current_enemy_index]
+        # Check if we've gone through all enemies
+        if self.current_enemy_index >= len(self.enemies):
             # All enemies have acted, reset for next round
             self.current_enemy_index = 0
             self.turn = 0  # Back to player turn
             self.enemy_turn_processed = True
+            self.action_processing = False  # Ensure flag is reset
             return
-        else:
-            # Reset enemy index or handle end of enemy turns
-            self.current_enemy_index = 0
-            self.turn = 0
                 
         # Get the current enemy
         current_enemy = self.enemies[self.current_enemy_index]
@@ -1055,6 +1067,8 @@ class BattleSystem:
         # Skip defeated enemies
         if current_enemy.is_defeated():
             self.current_enemy_index += 1
+            # Recursively call this method to process the next enemy
+            self.process_enemy_turn()
             return
                 
         # Start enemy attack animation
@@ -1641,6 +1655,32 @@ class BattleSystem:
         xp_text_x = window_x + int(10 * (current_width / original_width))
         xp_text_y = sp_bar_y + int(25 * (current_height / original_height))
         screen.blit(xp_text, (xp_text_x, xp_text_y))
+    
+    def _ensure_battle_flow_consistency(self):
+        """Helper method to ensure battle flow remains consistent."""
+        # Check for impossible states and fix them
+        if self.battle_over:
+            # If battle is over, ensure action processing is False
+            self.action_processing = False
+            return
+            
+        # Check for player's turn with no active animations but action_processing is true
+        if (self.turn == 0 and 
+            not self.player_attacking and 
+            not self.player_casting and 
+            not self.player_using_skill and 
+            not self.player_using_ultimate and 
+            not self.player_fleeing and
+            self.action_delay == 0 and
+            self.action_processing and
+            self.message_index >= len(self.full_message)):
+            # This is a stuck state, reset action_processing
+            self.action_processing = False
+            
+        # Ensure enemy turn consistency
+        if self.turn == 1 and not self.enemy_attacking and not self.enemy_turn_processed:
+            # Enemy turn should be processed
+            self.process_enemy_turn()
     
     def check_battle_over(self):
         """

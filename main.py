@@ -190,7 +190,6 @@ def handle_input(event, state_manager, battle_system, player, map_system,
                         # If targeting system handled the input, don't process further
                         return selected_pause_option, selected_settings_option, selected_inventory_option, inventory_mode, battle_system, text_speed_setting, text_speed_changed
 
-                
                 # Handle spell menu navigation if active
                 if battle_system.in_spell_menu:
                     # Get spells list
