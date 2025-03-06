@@ -55,16 +55,6 @@ class MapArea:
         if isinstance(entity, NPC):
             self.npcs.add(entity)
         
-    def add_enemy(self, enemy):
-        """
-        Add an enemy to this map area.
-        
-        Args:
-            enemy: The enemy to add
-        """
-        self.enemies.add(enemy)
-        self.entities.add(enemy)
-        
     def connect(self, direction, target_map):
         """
         Connect this map to another in the specified direction.
@@ -150,14 +140,11 @@ class MapArea:
         
         Returns:
             tuple or None: (new_map, position) if transition should occur, or 
-                          [Enemy] if encounter triggered, None otherwise
+                        [Enemy] if encounter triggered, None otherwise
         """
         # Get current screen dimensions
         if player:
             current_width, current_height = pygame.display.get_surface().get_size()
-        
-        # Update enemies
-        self.enemies.update()
         
         # If player is provided and in this map, check for map transitions and encounters
         if player and player in self.entities:

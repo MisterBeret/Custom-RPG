@@ -4,7 +4,7 @@ Enemy class for the RPG game.
 import pygame
 import random
 from entities.entity import Entity
-from constants import RED, SCREEN_WIDTH, SCREEN_HEIGHT, ORIGINAL_WIDTH, ORIGINAL_HEIGHT
+from constants import RED, ORIGINAL_WIDTH, ORIGINAL_HEIGHT
 from utils import scale_position, scale_dimensions
 from systems.passive_system import PassiveSet
 
@@ -17,8 +17,8 @@ class Enemy(Entity):
         Initialize an enemy.
         
         Args:
-            x (int): Initial x coordinate
-            y (int): Initial y coordinate
+            x (int): Initial x coordinate (only used for positioning in battle)
+            y (int): Initial y coordinate (only used for positioning in battle)
             character_class: The enemy's character class (determines stats)
             level (int): The enemy's level
             color (tuple): RGB color tuple for the enemy
@@ -28,23 +28,23 @@ class Enemy(Entity):
         # If no character class was provided, set default stats
         if not character_class:
             # Battle stats
-            self.max_hp = 3
-            self.hp = 3
-            self.max_sp = 0  # Enemy's starting SP
-            self.sp = 0      # Current SP
-            self.attack = 2  # Attack set to 2
-            self.defense = 1  # Defense stat set to 1
-            self.intelligence = 0  # Intelligence set to 0 (no magic ability)
-            self.resilience = 1    # Resilience set to 1 to reduce magic damage
-            self.acc = 2  # New accuracy stat
-            self.spd = 3  # Speed determines turn order
-            self.xp = 5   # XP awarded to player upon defeat
+            self.max_hp = 1
+            self.hp = 1
+            self.max_sp = 1
+            self.sp = 1
+            self.attack = 1
+            self.defense = 1
+            self.intelligence = 1
+            self.resilience = 1
+            self.acc = 1
+            self.spd = 1
+            self.xp = 1
         else:
             # Set XP based on level - more advanced calculation could be used
             self.xp = level * 5
         
         self.defending = False
-        self.defense_multiplier = 1  # New property to track defense multiplier
+        self.defense_multiplier = 1  # Property to track defense multiplier
 
         # Initialize passive abilities (empty by default for enemies)
         self.passives = PassiveSet(add_defaults=False)
@@ -55,13 +55,6 @@ class Enemy(Entity):
         # Position in battle formation (for multi-enemy battles)
         self.battle_position = 0
         
-    def update(self):
-        """
-        Update enemy state. Can be expanded for movement patterns.
-        """
-        # Currently no movement or AI, but can be added here
-        pass
-    
     def defend(self):
         """
         Enter defensive stance to halve incoming damage and increase evasion by 25%.
@@ -123,7 +116,7 @@ class Enemy(Entity):
             rat, snake, slime, turtle, hermit_crab  # Import monster classes
         )
         
-        # Map class IDs to actual class objects
+        # Map the class IDs to actual class objects
         class_map = {
             "rat": rat,
             "snake": snake,
@@ -151,26 +144,3 @@ class Enemy(Entity):
         else:
             # Fallback to default enemy if class not found
             return cls(x, y)
-        
-    @classmethod
-    def spawn_random(cls):
-        """
-        Create an enemy at a random position on the screen.
-        
-        Returns:
-            Enemy: A new enemy at a random position
-        """
-        # Get current screen dimensions
-        current_width, current_height = pygame.display.get_surface().get_size()
-        
-        # Calculate position in terms of original resolution
-        x = random.randint(100, ORIGINAL_WIDTH - 100)
-        y = random.randint(100, ORIGINAL_HEIGHT - 100)
-        
-        # Create enemy instance
-        enemy = cls(x, y)
-        
-        # Scale enemy to match current resolution
-        enemy.update_scale(current_width, current_height)
-        
-        return enemy

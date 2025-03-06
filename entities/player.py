@@ -101,16 +101,12 @@ class Player(Entity):
         # Adjust speed proportionally to resolution
         self.speed = max(1, int(self.base_speed * scale_factor))
         
-    def update(self, enemies=None, current_map=None):
+    def update(self, current_map=None):
         """
-        Update the player's state and position with collision detection for enemies, NPCs, and map boundaries.
+        Update the player's state and position with map boundary checks.
         
         Args:
-            enemies: Optional group of enemies to check for collisions
             current_map: The current map for boundary checking
-            
-        Returns:
-            The enemy collided with, or None if no collision
         """
         # Get current screen dimensions
         current_width, current_height = pygame.display.get_surface().get_size()
@@ -193,20 +189,6 @@ class Player(Entity):
         scale_factor_y = ORIGINAL_HEIGHT / current_height
         self.original_x = self.rect.x * scale_factor_x
         self.original_y = self.rect.y * scale_factor_y
-            
-        # Check for collision with enemies
-        collided_enemy = None
-        if current_map:
-            # Check for collisions with enemies
-            for enemy in current_map.enemies:
-                if self.rect.colliderect(enemy.rect):
-                    # Return to previous position to avoid movement into enemy
-                    self.rect.x = previous_x
-                    self.rect.y = previous_y
-                    collided_enemy = enemy
-                    break
-
-        return collided_enemy  # Return the enemy we collided with (or None)
 
     def reset_position(self):
         """

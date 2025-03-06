@@ -29,12 +29,6 @@ from systems.settings_manager import SettingsManager
 import utils
 from utils import scale_position, scale_dimensions, scale_font_size
 
-
-
-"""
-Updated handle_input function in main.py to support spell casting.
-"""
-
 def apply_display_settings(settings_manager, map_system=None):
     """
     Apply display settings based on current settings and update all entities.
@@ -71,7 +65,7 @@ def apply_display_settings(settings_manager, map_system=None):
     
     return screen
 
-def handle_input(event, state_manager, battle_system, player, collided_enemy, 
+def handle_input(event, state_manager, battle_system, player, map_system,
                 selected_pause_option, selected_settings_option, text_speed_setting,
                 selected_inventory_option, inventory_mode):
     """
@@ -82,7 +76,6 @@ def handle_input(event, state_manager, battle_system, player, collided_enemy,
         state_manager: The game state manager
         battle_system: The current battle system (if in battle)
         player: The player entity
-        collided_enemy: The enemy collided with (if in battle)
         selected_pause_option: The currently selected pause menu option
         selected_settings_option: The currently selected settings menu option
         text_speed_setting: The current text speed setting
@@ -350,11 +343,8 @@ def handle_input(event, state_manager, battle_system, player, collided_enemy,
                     if keys[pygame.K_RETURN]:
                         # Only remove enemy if player won (not if they fled)
                         if battle_system.victory:
-                            # Get current map and remove the defeated enemy
+                            # Get current map 
                             current_map = map_system.get_current_map()
-                            for enemy in battle_system.enemies:
-                                if enemy.is_defeated():
-                                    enemy.kill()
                         
                         # Return to world map
                         state_manager.change_state(WORLD_MAP)
@@ -567,7 +557,7 @@ def draw_game(screen, state_manager, battle_system, map_system,
         if player:
             _draw_inventory(screen, player, selected_inventory_option, inventory_mode, font)
 
-def _draw_base_state(screen, state_manager, battle_system, enemies):
+def _draw_base_state(screen, state_manager, battle_system, enemies, map_system):
     """Draw the underlying state (world map or battle)."""
     if state_manager.is_world_map or state_manager.previous_state == WORLD_MAP:
         current_map = map_system.get_current_map()
@@ -723,7 +713,6 @@ def main():
     
     # Battle system (will be initialized when battle starts)
     battle_system = None
-    collided_enemy = None
     
     # Main game loop
     running = True
@@ -758,12 +747,12 @@ def main():
             
             # Handle input for all game states
             updated_values = handle_input(
-                event, state_manager, battle_system, player, collided_enemy, 
+                event, state_manager, battle_system, player, map_system,
                 selected_pause_option, selected_settings_option, text_speed_setting,
                 selected_inventory_option, inventory_mode
             )
             
-            # Unpack the returned values (now 7 values)
+            # Unpack the returned values
             selected_pause_option, selected_settings_option, selected_inventory_option, inventory_mode, battle_system_update, new_text_speed, text_speed_changed = updated_values
             
             # Update text_speed_setting
@@ -785,24 +774,30 @@ def main():
             current_map = map_system.get_current_map()
             
             # Update player with current map for boundary checking
-            collided_enemy = player.update(current_map.enemies, current_map)
-            
-            # Check for map transitions or encounters
+            player.update(current_map)  # Removed enemy collision detection parameter
+
+            # Check for map transitions or random encounters
             map_update_result = current_map.update(player, map_system.encounter_manager)
             
             if isinstance(map_update_result, list):
                 # We got a list of enemies - trigger battle
                 encountered_enemies = map_update_result
+                # Switch to battle state
                 state_manager.change_state(BATTLE)
                 battle_system = BattleSystem(player, encountered_enemies, text_speed_setting)
             elif map_update_result:
                 # Map transition
                 new_map, entry_side = map_update_result
                 map_system.transition_player(player, new_map, entry_side)
-            elif collided_enemy:
-                # Direct collision with an enemy
-                state_manager.change_state(BATTLE)
-                battle_system = BattleSystem(player, collided_enemy, text_speed_setting)
+            
+            # Check if battle is over and return to world map
+            if battle_system is not None and battle_system.battle_over and battle_system.message_index >= len(battle_system.full_message):
+                keys = pygame.key.get_pressed()
+                if keys[pygame.K_RETURN]:
+                    # Return to world map
+                    state_manager.change_state(WORLD_MAP)
+                    player.reset_position()
+                    battle_system = None
             
         elif state_manager.is_dialogue:
             # Update dialogue animations
