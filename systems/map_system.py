@@ -27,6 +27,9 @@ class MapArea:
         self.entities = pygame.sprite.Group()
         self.enemies = pygame.sprite.Group()
         self.npcs = pygame.sprite.Group()
+        self.step_timer = 0       # Counts the amount of time moved to add a step for encounter calculation
+        self.step_interval = 0.5  # Time in seconds between step counts
+        self.was_moving = False   # Track if player was moving last frame
         
         # Connections to other maps (None if no connection)
         self.connections = {
@@ -158,30 +161,40 @@ class MapArea:
             player.last_x = player.rect.x
             player.last_y = player.rect.y
             
-            # If player moved, increment step counter and check for encounters
+            # If player is moving, update step timer
             if player_moved:
-                self.steps_since_last_encounter += 1
+                self.step_timer += 1/60  # Assuming 60 FPS
+                self.was_moving = True
                 
-                # Only check for random encounters if we've taken enough steps since the last one
-                if (self.steps_since_last_encounter >= self.min_steps_between_encounters and 
-                    encounter_manager and random.random() < self.encounter_chance):
+                # Count a step every step_interval seconds of movement
+                if self.step_timer >= self.step_interval:
+                    self.steps_since_last_encounter += 1
+                    self.step_timer = 0  # Reset timer only after a step is counted
                     
-                    # Generate an encounter for this map
-                    enemy_specs = encounter_manager.generate_encounter_for_map(self.map_id)
-                    if enemy_specs:
-                        # Reset step counter
-                        self.steps_since_last_encounter = 0
+                    # Check for encounters
+                    if (self.steps_since_last_encounter >= self.min_steps_between_encounters and 
+                        encounter_manager and random.random() < self.encounter_chance):
                         
-                        # Create enemies from specs
-                        encounter_enemies = []
-                        for spec in enemy_specs:
-                            # Create the enemy off-screen initially (position will be set by battle system)
-                            enemy = Enemy.create_from_spec(spec, -100, -100)
-                            enemy.update_scale(current_width, current_height)
-                            encounter_enemies.append(enemy)
+                        # Generate an encounter for this map
+                        enemy_specs = encounter_manager.generate_encounter_for_map(self.map_id)
+                        if enemy_specs:
+                            # Reset step counter
+                            self.steps_since_last_encounter = 0
                             
-                        # Return the list of enemies to trigger a battle
-                        return encounter_enemies
+                            # Create enemies from specs
+                            encounter_enemies = []
+                            for spec in enemy_specs:
+                                # Create the enemy off-screen initially (position will be set by battle system)
+                                enemy = Enemy.create_from_spec(spec, -100, -100)
+                                enemy.update_scale(current_width, current_height)
+                                encounter_enemies.append(enemy)
+                                
+                            # Return the list of enemies to trigger a battle
+                            return encounter_enemies
+            elif self.was_moving:
+                # Player just stopped moving
+                self.was_moving = False
+                # Do not reset step_timer to allow accumulated movement
             
             # Check for map transitions
             return self.check_map_transition(player, current_width, current_height)

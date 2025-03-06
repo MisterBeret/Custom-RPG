@@ -33,8 +33,8 @@ def initialize_maps(player):
     west_map = MapArea("Debug Area - West", (20, 0, 20), "west")  # Very dark purple
     
     # Set encounter chances
-    center_map.encounter_chance = 0.15  # 15% chance per step
-    north_map.encounter_chance = 0.10   # 10% chance per step
+    center_map.encounter_chance = 0     # No encounters
+    north_map.encounter_chance = 0      # No encounters
     east_map.encounter_chance = 0.20    # 20% chance per step (rat-infested)
     south_map.encounter_chance = 0.05   # 5% chance per step
     west_map.encounter_chance = 0.15    # 15% chance per step
