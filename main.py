@@ -180,8 +180,17 @@ def handle_input(event, state_manager, battle_system, player, map_system,
         
     # Handle keyboard input for battle
     elif state_manager.is_battle and battle_system:
-        if battle_system and not battle_system.battle_over:
+        if not battle_system.battle_over:
             if event.type == pygame.KEYDOWN:
+                # Check if we're in targeting mode first
+                if battle_system.in_targeting_mode:
+                    # Try to handle targeting-specific inputs
+                    targeting_handled = battle_system.handle_player_input(event)
+                    if targeting_handled:
+                        # If targeting system handled the input, don't process further
+                        return selected_pause_option, selected_settings_option, selected_inventory_option, inventory_mode, battle_system, text_speed_setting, text_speed_changed
+
+                
                 # Handle spell menu navigation if active
                 if battle_system.in_spell_menu:
                     # Get spells list

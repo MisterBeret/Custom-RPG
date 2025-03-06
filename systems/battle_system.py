@@ -1009,7 +1009,7 @@ class BattleSystem:
         self.player_attacking = True
         self.animation_timer = 0
         
-        # Calculate hit chance and determine if attack hits
+        # Calculate and use hit chance
         hit_chance = self.calculate_hit_chance(self.player, target_enemy)
         attack_hits = random.random() < hit_chance
         
@@ -1018,20 +1018,17 @@ class BattleSystem:
             damage = self.calculate_damage(self.player, target_enemy)
             target_enemy.take_damage(damage)
             
-            # Store the message for later display after animation
-            enemy_name = target_enemy.character_class.name if hasattr(target_enemy, 'character_class') and target_enemy.character_class else "Enemy"
-            
+            # Store the message for later display
             if target_enemy.is_defeated():
-                self.pending_message = f"You attacked {enemy_name} for {damage} damage! Enemy defeated!"
+                self.pending_message = f"You attacked for {damage} damage! Enemy defeated!"
                 
                 # Check if all enemies are defeated
                 self.pending_victory = self._check_all_enemies_defeated()
             else:
-                self.pending_message = f"You attacked {enemy_name} for {damage} damage!"
+                self.pending_message = f"You attacked for {damage} damage!"
         else:
             # Attack missed
-            enemy_name = target_enemy.character_class.name if hasattr(target_enemy, 'character_class') and target_enemy.character_class else "Enemy"
-            self.pending_message = f"Your attack missed {enemy_name}!"
+            self.pending_message = f"Your attack missed!"
     
     def process_enemy_turn(self):
         """Process the enemy's turn in battle."""
