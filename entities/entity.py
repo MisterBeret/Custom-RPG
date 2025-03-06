@@ -9,7 +9,7 @@ class Entity(pygame.sprite.Sprite):
     """
     Base class for all game entities (player, enemies, etc.).
     """
-    def __init__(self, x, y, width, height, color, character_class=None, level=1):
+    def __init__(self, x, y, width, height, color, character_class=None, level=1, name=None):
         """
         Initialize a new entity.
         
@@ -19,6 +19,9 @@ class Entity(pygame.sprite.Sprite):
             width (int): Entity width
             height (int): Entity height
             color (tuple): RGB color tuple
+            character_class: Character class (determines stats)
+            level (int): Entity level
+            name (str): Entity name (optional)
         """
         super().__init__()
         
@@ -40,6 +43,14 @@ class Entity(pygame.sprite.Sprite):
 
         self.character_class = character_class
         self.level = level
+        
+        # Add name field (use class name if not provided)
+        if name:
+            self.name = name
+        elif character_class:
+            self.name = character_class.name
+        else:
+            self.name = "Unknown"
         
         # Initialize stats based on class if provided
         if character_class:

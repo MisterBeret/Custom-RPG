@@ -26,6 +26,7 @@ from systems.inventory import get_item_effect
 from systems.map_system import MapSystem, MapArea
 from systems.dialogue_system import DialogueSystem
 from systems.settings_manager import SettingsManager
+from game_initialization import initialize_party, create_party_recruiter
 import utils
 from utils import scale_position, scale_dimensions, scale_font_size
 
@@ -684,6 +685,10 @@ def main():
     """Main function to run the game."""
     # Initialize Pygame
     pygame.init()
+
+    # Initialize party with default character
+    party, player_name = initialize_party()
+    player = party.leader
     
     # Initialize settings manager
     settings_manager = SettingsManager()

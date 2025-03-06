@@ -12,7 +12,7 @@ class Enemy(Entity):
     """
     Enemy entity that can battle with the player.
     """
-    def __init__(self, x, y, character_class=None, level=1, color=RED):
+    def __init__(self, x, y, character_class=None, level=1, color=RED, unique_id=None):
         """
         Initialize an enemy.
         
@@ -22,8 +22,17 @@ class Enemy(Entity):
             character_class: The enemy's character class (determines stats)
             level (int): The enemy's level
             color (tuple): RGB color tuple for the enemy
+            unique_id (int): Unique identifier for this enemy instance
         """
-        super().__init__(x, y, 32, 32, color, character_class, level)
+        # Generate a name based on class and unique_id
+        name = None
+        if character_class:
+            if unique_id is not None:
+                name = f"{character_class.name} #{unique_id}"
+            else:
+                name = character_class.name
+                
+        super().__init__(x, y, 32, 32, color, character_class, level, name)
         
         # If no character class was provided, set default stats
         if not character_class:
@@ -100,7 +109,7 @@ class Enemy(Entity):
         self.defending = False
         
     @classmethod
-    def create_from_spec(cls, enemy_spec, x, y):
+    def create_from_spec(cls, enemy_spec, x, y, unique_id=None):
         """
         Create an enemy based on an enemy specification.
         
@@ -108,6 +117,7 @@ class Enemy(Entity):
             enemy_spec: The enemy specification from the encounter system
             x (int): Initial x coordinate
             y (int): Initial y coordinate
+            unique_id (int): Optional unique identifier for this enemy
             
         Returns:
             Enemy: The created enemy instance
@@ -139,8 +149,8 @@ class Enemy(Entity):
         color = color_map.get(enemy_spec.class_id, RED)  # Default to RED if not found
         
         if character_class:
-            # Create the enemy with the specified class and level
-            return cls(x, y, character_class, enemy_spec.level, color)
+            # Create the enemy with the specified class, level, and unique ID
+            return cls(x, y, character_class, enemy_spec.level, color, unique_id)
         else:
             # Fallback to default enemy if class not found
-            return cls(x, y)
+            return cls(x, y, None, 1, RED, unique_id)

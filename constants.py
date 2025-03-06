@@ -59,6 +59,7 @@ PAUSE = 2
 SETTINGS = 3
 INVENTORY = 4
 DIALOGUE = 5
+PARTY_MANAGEMENT = 6
 
 # Text speed options
 TEXT_SPEED_SLOW = "Slow"

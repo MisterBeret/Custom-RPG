@@ -18,16 +18,16 @@ class BattleSystem:
     """
     Manages turn-based battles between player and enemies.
     """
-    def __init__(self, player, enemies, text_speed_setting):
+    def __init__(self, party, enemies, text_speed_setting):
         """
         Initialize the battle system.
         
         Args:
-            player: The player entity
+            party: The player's party
             enemies: A list of enemy entities or a single enemy
             text_speed_setting: The current text speed setting
         """
-        self.player = player
+        self.party = party
         
         # Ensure enemies is a list
         if not isinstance(enemies, list):
@@ -45,19 +45,20 @@ class BattleSystem:
         self.targeting_system = TargetingSystem(self.enemies)
         self.in_targeting_mode = False  # Whether player is selecting a target
         
-        # Track the current enemy attack sequence
-        self.current_enemy_index = 0
+        # Create turn order system
+        from systems.turn_order import TurnOrder
+        self.turn_order = TurnOrder(self.party.active_members, self.enemies)
         
-        # Determine who goes first based on speed
-        # Compare player speed to the fastest enemy
-        fastest_enemy_speed = max([enemy.spd for enemy in self.enemies]) if self.enemies else 0
+        # Determine who goes first based on turn order
+        current_combatant = self.turn_order.get_current()
         
-        if player.spd >= fastest_enemy_speed:
+        # Set the initial message based on who goes first
+        if current_combatant in self.party.active_members:
+            self.first_message = f"Battle started! {current_combatant.name} moves first!"
             self.turn = 0  # Player's turn
-            self.first_message = "Battle started! You move first!"
         else:
+            self.first_message = f"Battle started! {current_combatant.name} moves first!"
             self.turn = 1  # Enemy's turn
-            self.first_message = "Battle started! Enemy moves first!"
             
         self.full_message = self.first_message
         self.displayed_message = ""
@@ -753,20 +754,18 @@ class BattleSystem:
         if self.message_index < len(self.full_message):
             return
             
+        # Get the current combatant
+        current_combatant = self.turn_order.get_current()
+        
         # Handle counter passive effect after enemy attack message is shown
         if self.counter_triggered and self.turn == 1:
-            # Get the current enemy safely
-            if self.current_enemy_index < len(self.enemies):
-                current_enemy = self.enemies[self.current_enemy_index]
-                
-                # Start counter-attack animation
-                self.player_countering = True
-                self.counter_animation_timer = 0
-                self.counter_triggered = False
-            else:
-                # Handle error case
-                self.counter_triggered = False
-                self.turn = 0  # Return to player's turn as fallback
+            # Handle counter attack
+            active_character = self.party.active_members[self.active_character_index] if self.active_character_index < len(self.party.active_members) else self.party.active_members[0]
+            
+            # Start counter-attack animation
+            self.player_countering = True
+            self.counter_animation_timer = 0
+            self.counter_triggered = False
         
         # Handle counter-attack animation
         elif self.player_countering:

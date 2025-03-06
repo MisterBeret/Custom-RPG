@@ -15,15 +15,18 @@ class Player(Entity):
     """
     Player character controllable by the user.
     """
-    def __init__(self, x, y, character_class=None, level=1):
+    def __init__(self, x, y, character_class=None, level=1, name="Hero"):
         """
         Initialize the player.
         
         Args:
             x (int): Initial x coordinate
             y (int): Initial y coordinate
+            character_class: Character class (determines stats)
+            level (int): Starting level
+            name (str): Character name
         """
-        super().__init__(x, y, 32, 48, GREEN, character_class, level)
+        super().__init__(x, y, 32, 48, GREEN, character_class, level, name)
         
         # Base movement speed (will be scaled based on resolution)
         self.base_speed = 5
