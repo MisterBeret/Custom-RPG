@@ -5,9 +5,9 @@ import pygame
 import sys
 import random
 from constants import (
-    BLACK, WHITE, GREEN, RED, GRAY, YELLOW, SCREEN_WIDTH, SCREEN_HEIGHT,
+    BLACK, WHITE, GREEN, RED, GRAY, BLUE, YELLOW, PURPLE, SCREEN_WIDTH, SCREEN_HEIGHT,
     ORIGINAL_WIDTH, ORIGINAL_HEIGHT, 
-    WORLD_MAP, BATTLE, PAUSE, SETTINGS, INVENTORY, DIALOGUE,
+    WORLD_MAP, BATTLE, PAUSE, SETTINGS, INVENTORY, DIALOGUE,PARTY_MANAGEMENT,
     TEXT_SPEED_SLOW, TEXT_SPEED_MEDIUM, TEXT_SPEED_FAST,
     PAUSE_OPTIONS, SETTINGS_OPTIONS, BATTLE_OPTIONS,
     RESOLUTION_OPTIONS, DISPLAY_MODE_OPTIONS, 
@@ -18,6 +18,7 @@ from map_initialization import initialize_maps
 from game_states import GameStateManager
 from entities.player import Player
 from entities.enemy import Enemy
+from entities.party_recruiter import PartyRecruiter
 from systems.battle_system import BattleSystem
 from systems.battle_ui_helpers import draw_enemy_name_tags, draw_enemy_health_bars, draw_turn_order_indicator
 from systems.battle_visualizer import draw_battle_background, BattleVisualizer
