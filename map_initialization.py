@@ -4,17 +4,19 @@ Map initialization for the RPG game.
 from systems.map_system import MapSystem, MapArea
 from entities.enemy import Enemy
 from entities.npc import NPC
+from entities.party_recruiter import PartyRecruiter
 from data.encounter_pools import initialize_encounter_pools
 import random
 import pygame
 from constants import BLACK, BLUE, GREEN, RED, PURPLE, WHITE, ORIGINAL_WIDTH, ORIGINAL_HEIGHT
 
-def initialize_maps(player):
+def initialize_maps(player, party=None):
     """
     Create and initialize all map areas.
     
     Args:
         player: The player entity to place on the initial map
+        party: The player's party (optional)
         
     Returns:
         MapSystem: The initialized map system
@@ -54,26 +56,27 @@ def initialize_maps(player):
     
     # Get current screen dimensions
     current_width, current_height = pygame.display.get_surface().get_size()
-    
-    # Scale player to match current resolution
-    player.update_scale(current_width, current_height)
-    
-    # Add test NPC with dialog
-    test_dialogue = [
-        "This is sample text!",
-        "I've heard there are more monsters around these days.",
-        "Be careful, sometimes you'll encounter multiple enemies at once!",
-        "The east area is particularly dangerous with all those rats..."
-    ]
 
-    # Position NPC in the top right area
-    npc_x = ORIGINAL_WIDTH * 0.75
+    # Position NPC in the top center area
+    npc_x = ORIGINAL_WIDTH * 0.5
     npc_y = ORIGINAL_HEIGHT * 0.3
 
-    test_npc = NPC(npc_x, npc_y, 32, 48, WHITE, "Test NPC", test_dialogue)
-
-    # Scale NPC to match current resolution
-    test_npc.update_scale(current_width, current_height)
+    if party:
+        # Create a party recruiter instead of regular NPC
+        recruiter = PartyRecruiter(npc_x, npc_y, 32, 48, WHITE, party)
+        recruiter.update_scale(current_width, current_height)
+        north_map.add_entity(recruiter)
+    else:
+        # Create regular NPC if no party is provided
+        test_dialogue = [
+            "This is sample text!",
+            "I've heard there are more monsters around these days.",
+            "Be careful, sometimes you'll encounter multiple enemies at once!",
+            "The east area is particularly dangerous with all those rats..."
+        ]
+        test_npc = NPC(npc_x, npc_y, 32, 48, WHITE, "Test NPC", test_dialogue)
+        test_npc.update_scale(current_width, current_height)
+        north_map.add_entity(test_npc)
 
     # Add NPC to north map
     north_map.add_entity(test_npc)

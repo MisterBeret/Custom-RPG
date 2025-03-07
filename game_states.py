@@ -70,3 +70,8 @@ class GameStateManager:
     def is_inventory(self):
         """Returns True if current state is inventory menu."""
         return self.current_state == INVENTORY
+    
+    @property
+    def is_party_management(self):
+        """Returns True if current state is party management UI."""
+        return self.current_state == PARTY_MANAGEMENT

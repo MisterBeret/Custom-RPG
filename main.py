@@ -565,6 +565,17 @@ def draw_game(screen, state_manager, battle_system, map_system,
                 
         if player:
             _draw_inventory(screen, player, selected_inventory_option, inventory_mode, font)
+    
+    elif state_manager.is_party_management:
+       # Draw the base state first
+       current_map = map_system.get_current_map()
+       current_map.draw(screen)
+       
+       # Draw party management UI
+       for npc in current_map.npcs:
+           if isinstance(npc, PartyRecruiter):
+               npc.draw_ui(screen)
+               break
 
 def _draw_base_state(screen, state_manager, battle_system, enemies, map_system):
     """Draw the underlying state (world map or battle)."""
@@ -716,9 +727,12 @@ def main():
     selected_inventory_option = 0
     inventory_mode = "pause"
     
-    # Create player and initialize map system
-    player = Player(SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2)
-    map_system = initialize_maps(player)
+    # Initialize party with default character
+    party, player_name = initialize_party()
+    player = party.leader
+
+    # Initialize maps with both player and party
+    map_system = initialize_maps(player, party)
     
     # Initialize dialogue system
     dialogue_system = DialogueSystem()
@@ -797,7 +811,7 @@ def main():
                 encountered_enemies = map_update_result
                 # Switch to battle state
                 state_manager.change_state(BATTLE)
-                battle_system = BattleSystem(player, encountered_enemies, text_speed_setting)
+                battle_system = BattleSystem(party, encountered_enemies, text_speed_setting)
             elif map_update_result:
                 # Map transition
                 new_map, entry_side = map_update_result
@@ -815,6 +829,32 @@ def main():
         elif state_manager.is_dialogue:
             # Update dialogue animations
             dialogue_system.update()
+            
+            # Check if dialogue with recruiter is finished
+            if dialogue_system.active == False:
+                current_map = map_system.get_current_map()
+                for npc in current_map.npcs:
+                    if isinstance(npc, PartyRecruiter) and npc.show_party_ui:
+                        state_manager.change_state(PARTY_MANAGEMENT)
+        
+        elif state_manager.is_party_management:
+            # Find the recruiter
+            recruiter = None
+            current_map = map_system.get_current_map()
+            for npc in current_map.npcs:
+                if isinstance(npc, PartyRecruiter):
+                    recruiter = npc
+                    break
+                    
+            if recruiter:
+                # Handle party UI events
+                for event in pygame.event.get():
+                    if event.type == pygame.QUIT:
+                        running = False
+                    elif recruiter.update(event):
+                        # If recruiter signals to close UI
+                        state_manager.return_to_previous()
+                        recruiter.show_party_ui = False
             
         elif state_manager.is_battle and battle_system:
             # Update battle animations and process turns

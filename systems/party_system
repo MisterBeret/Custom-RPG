@@ -3,6 +3,7 @@ Party system for the RPG game.
 """
 from typing import List, Optional
 from entities.player import Player
+from systems.character_inventory import PartyStorage
 
 class Party:
     """
@@ -15,10 +16,11 @@ class Party:
         Args:
             max_active_members: Maximum number of characters in the active party
         """
-        self.max_active_members = max_active_members
+        self.max_active_members = max_active_members  # Limit active members to 4
         self.active_members = []   # Characters in the active party (in battle)
         self.reserve_members = []  # Characters in reserve
         self.leader = None         # The party leader (character shown on map)
+        self.storage = PartyStorage()  # Shared storage inventory
     
     def add_member(self, character, active=True):
         """

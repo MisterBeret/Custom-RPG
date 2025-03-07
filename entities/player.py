@@ -36,7 +36,7 @@ class Player(Entity):
         self.facing = "down"  # Default facing direction
         
         # RPG Stats
-        self.level = 1
+        self.level = level
         self.experience = 0
         self.max_level = 100
         
@@ -53,8 +53,9 @@ class Player(Entity):
         self.spd = 5  # Speed determines turn order
         self.defending = False
         
-        # Inventory
-        self.inventory = Inventory()
+        # Character-specific inventory
+        from systems.character_inventory import CharacterInventory
+        self.inventory = CharacterInventory(name)
         
         if character_class:
             abilities = character_class.get_abilities_for_level(level)
