@@ -13,10 +13,15 @@ from constants import (BLACK, WHITE, GREEN, RED, GRAY, SCREEN_WIDTH, SCREEN_HEIG
                       ACTION_DELAY_DURATION, SPELL_ANIMATION_DURATION, 
                       BATTLE_OPTIONS, MAX_LOG_SIZE, ORIGINAL_WIDTH, ORIGINAL_HEIGHT,
                       ORANGE, BLUE, DARK_BLUE, PURPLE, YELLOW)
+from systems.battle_formation import BattleFormation
+from systems.targeting_system_updated import EnhancedTargetingSystem
+from systems.turn_order import TurnOrder
+from systems.battle_ui_party import draw_party_status, draw_turn_order_indicator
+from entities.player import Player
 
 class BattleSystem:
     """
-    Manages turn-based battles between player and enemies.
+    Manages turn-based battles between player party and enemies.
     """
     def __init__(self, party, enemies, text_speed_setting):
         """
@@ -35,101 +40,135 @@ class BattleSystem:
         else:
             self.enemies = enemies
         
-        self.action_processing = False  # Flag to prevent multiple actions per turn
+        # Initialize battle formation system
+        current_width, current_height = pygame.display.get_surface().get_size()
+        self.formation = BattleFormation(current_width, current_height)
         
-        # Position enemies in a formation
-        self._setup_enemy_formation()
-
-        # Create targeting system for enemy selection
-        from systems.targeting_system import TargetingSystem
-        self.targeting_system = TargetingSystem(self.enemies)
-        self.in_targeting_mode = False  # Whether player is selecting a target
+        # Position party members and enemies
+        self.formation.position_party_members(party)
+        self.formation.position_enemies(self.enemies)
         
-        # Create turn order system
-        from systems.turn_order import TurnOrder
-        self.turn_order = TurnOrder(self.party.active_members, self.enemies)
+        # Action processing flag
+        self.action_processing = False
         
-        # Determine who goes first based on turn order
+        # Create enhanced targeting system
+        self.targeting_system = EnhancedTargetingSystem(party, self.enemies)
+        self.in_targeting_mode = False
+        
+        # Set up turn order
+        self.turn_order = TurnOrder(party.active_members, self.enemies)
+        
+        # Get the first character to act
         current_combatant = self.turn_order.get_current()
         
-        # Set the initial message based on who goes first
-        if current_combatant in self.party.active_members:
-            self.first_message = f"Battle started! {current_combatant.name} moves first!"
+        # Determine message based on who goes first
+        if current_combatant in party.active_members:
             self.turn = 0  # Player's turn
-        else:
             self.first_message = f"Battle started! {current_combatant.name} moves first!"
+        else:
             self.turn = 1  # Enemy's turn
+            self.first_message = f"Battle started! {current_combatant.name} moves first!"
             
+        # Battle UI state
         self.full_message = self.first_message
         self.displayed_message = ""
         self.message_index = 0
-        
-        # Text speed based on global setting
-        self.set_text_speed(text_speed_setting)
-            
         self.text_timer = 0
-        self.battle_options = BATTLE_OPTIONS
-        self.selected_option = 0
+        self.message_log = [self.first_message]
+        self.max_log_size = MAX_LOG_SIZE
+        
+        # Set text speed based on global setting
+        self.set_text_speed(text_speed_setting)
+        
+        # Battle state variables
         self.battle_over = False
         self.victory = False
         self.pending_victory = False
         self.fled = False
         
-        # Add a delay timer for action transitions
+        # Action delay timer
         self.action_delay = 0
         self.action_delay_duration = ACTION_DELAY_DURATION
         
-        # Add a flag to prevent multiple enemy attacks
-        self.enemy_turn_processed = False
-        
-        # Message log to store recent battle messages
-        self.message_log = [self.first_message]
-        self.max_log_size = MAX_LOG_SIZE
-        
-        # Animation properties
-        self.player_pos = (550, 400)  # Player now on the right
-        self.enemy_pos = (200, 300)   # Enemy now on the left
-        self.player_attacking = False
-        self.enemy_attacking = False
-        self.player_fleeing = False
+        # Animation variables
         self.animation_timer = 0
         self.animation_duration = ATTACK_ANIMATION_DURATION
         self.flee_animation_duration = FLEE_ANIMATION_DURATION
+        self.spell_animation_duration = SPELL_ANIMATION_DURATION
         
-        # Pending values for delayed application
-        self.pending_damage = 0
-        self.original_damage = 0
-        self.pending_message = ""
+        # Character action states
+        self.active_character = None  # Current character taking action
+        self.character_attacking = False
+        self.character_defending = False
+        self.character_casting = False
+        self.character_using_skill = False
+        self.character_using_ultimate = False
+        self.character_fleeing = False
         
-        # Magic system additions
+        # Enemy action states
+        self.enemy_attacking = False
+        self.current_enemy = None
+        
+        # Battle options menu state
+        self.battle_options = BATTLE_OPTIONS
+        self.selected_option = 0
+        
+        # Menu state for special actions
         self.in_spell_menu = False
         self.selected_spell_option = 0
-        self.player_casting = False
-        self.spell_animation_duration = SPELL_ANIMATION_DURATION
         self.current_spell = None
-
-        # Skill system additions
+        
         self.in_skill_menu = False
         self.selected_skill_option = 0
-        self.player_using_skill = False
-        self.skill_animation_duration = ACTION_DELAY_DURATION  # Reuse action delay for skills
         self.current_skill = None
         
-        # Ultimate system additions
         self.in_ultimate_menu = False
         self.selected_ultimate_option = 0
-        self.player_using_ultimate = False
-        self.ultimate_animation_duration = SPELL_ANIMATION_DURATION  # Make ultimates as flashy as spells
         self.current_ultimate = None
-
-        # Passive system additions
-        self.counter_may_trigger = False
+        
+        # Passive ability trackers
         self.counter_triggered = False
         self.counter_message = ""
-        self.counter_damage = 0
+        self.character_countering = False
+        self.counter_animation_timer = 0
+        
+        # Pending effects to apply after animation
+        self.pending_damage = 0
+        self.pending_message = ""
+        self.target = None
 
-        self.player_countering = False  # Flag to track counter attack animation
-        self.counter_animation_timer = 0  # Separate timer for counter animations
+    def get_current_character(self):
+        """
+        Get the character whose turn it currently is.
+        
+        Returns:
+            The current character, or None if it's an enemy's turn
+        """
+        current = self.turn_order.get_current()
+        if current in self.party.active_members:
+            return current
+        return None
+    
+    def get_current_enemy(self):
+        """
+        Get the enemy whose turn it currently is.
+        
+        Returns:
+            The current enemy, or None if it's a player's turn
+        """
+        current = self.turn_order.get_current()
+        if current in self.enemies:
+            return current
+        return None
+    
+    def is_player_turn(self):
+        """
+        Check if it's a player character's turn.
+        
+        Returns:
+            bool: True if it's a player's turn, False if enemy
+        """
+        return self.turn_order.is_player_turn()
         
     def _setup_enemy_formation(self):
         """Position enemies in a formation based on their count."""
@@ -215,7 +254,7 @@ class BattleSystem:
         else:  # FAST
             self.text_speed = 4
     
-    def calculate_hit_chance(self, attacker, defender):
+    def _calculate_hit_chance(self, attacker, defender):
         """
         Calculate the chance to hit based on attacker's ACC and defender's SPD.
         
@@ -247,11 +286,10 @@ class BattleSystem:
         
         return hit_chance
     
-    def calculate_damage(self, attacker, defender):
+    def _calculate_damage(self, attacker, defender):
         """
         Calculate damage based on attacker's ATK and defender's DEF stats.
-        Also applies a 50% damage reduction if defending.
-    
+        
         Args:
             attacker: The attacking entity
             defender: The defending entity
@@ -260,7 +298,7 @@ class BattleSystem:
             int: The calculated damage amount (minimum 0)
         """
         # Calculate base damage as attacker's attack minus defender's defense
-        damage = max(0, attacker.attack - defender.defense)
+        damage = max(1, attacker.attack - defender.defense)
     
         # If defender is defending, reduce all damage by 50% (rounded up)
         if defender.defending:
@@ -269,7 +307,7 @@ class BattleSystem:
     
         return damage
     
-    def calculate_magic_damage(self, caster, target, base_power=0):
+    def _calculate_magic_damage(self, caster, target, base_power):
         """
         Calculate magic damage based on caster's INT and target's RES stats.
     
@@ -282,7 +320,7 @@ class BattleSystem:
             int: The calculated magic damage amount (minimum 0)
         """
         # Magic damage formula: (caster's INT + spell base power) - target's RES
-        damage = max(0, (caster.intelligence + base_power) - target.resilience)
+        damage = max(1, (caster.intelligence + base_power) - target.resilience)
 
         # If target is defending, reduce all damage by 50% (rounded up)
         if target.defending:
@@ -291,315 +329,557 @@ class BattleSystem:
     
         return damage
         
-    def process_action(self, action):
+    def process_action(self, action, character=None):
         """
         Process a player action.
         
         Args:
-            action: The action to process ("ATTACK", "DEFEND", "MOVE", "SKILL", etc.)
+            action: The action to process ("ATTACK", "DEFEND", "MOVE", etc.)
+            character: The character performing the action (uses active character if None)
         """
-        if self.turn == 0 and not self.action_processing:  # Player's turn and not already processing
-            self.action_processing = True
-            if action == "ATTACK":
-                if len(self.enemies) == 1:
-                    # With just one enemy, attack it directly
-                    self._perform_player_attack(self.enemies[0])
-                else:
-                    # With multiple enemies, enter targeting mode
-                    self.in_targeting_mode = True
-                    self.targeting_system.start_targeting(self.enemies)
-                    # Don't add to log, just set display message temporarily
-                    self.displayed_message = "Select a target"
-                    self.full_message = self.displayed_message
-                    self.message_index = len(self.full_message)
-                    self.action_processing = False  # Keep accepting input for target selection
-                    
-            elif action == "DEFEND":
-                self.player.defend()
-                self.set_message("You're defending! Incoming damage reduced and evasion increased!")
-                # Reset the action delay timer
-                self.action_delay = 0
-                # Make sure we're setting action_processing to True to prevent multiple actions
-                self.action_processing = True
+        # Use the active character if none is provided
+        if character is None:
+            character = self.get_current_character()
+            
+        if not character or self.action_processing:
+            return
+            
+        self.action_processing = True
+        self.active_character = character
+        
+        if action == "ATTACK":
+            # In multi-enemy battles, enter targeting mode
+            if len(self.enemies) > 1:
+                self.in_targeting_mode = True
+                self.targeting_system.start_targeting(character, EnhancedTargetingSystem.ENEMIES)
+                self.set_message(f"{character.name} is targeting an enemy")
+                self.action_processing = False  # Allow targeting input
+            else:
+                # With just one enemy, attack it directly
+                self._perform_attack(character, self.enemies[0])
                 
-            elif action == "RUN":
-                # Start flee animation (this will be replaced by MOVE later)
-                self.player_fleeing = True
-                self.animation_timer = 0
-                self.set_message("You tried to flee!")
-                
-            # Handle SKILL action
-            elif action == "SKILL":
-                # Skill system is implemented now
-                pass
-                
-            # Handle ULTIMATE action
-            elif action == "ULTIMATE":
-                # Ultimate system is now implemented
-                pass
-                
-            # STATUS is still not implemented
-            elif action == "STATUS":
-                self.set_message("STATUS system not yet implemented.")
+        elif action == "DEFEND":
+            character.defend()
+            self.character_defending = True
+            self.set_message(f"{character.name} is defending! Incoming damage reduced and evasion increased!")
+            
+            # Reset the action delay timer
+            self.action_delay = 0
+            
+        elif action == "MOVE":
+            # Start flee animation
+            self.character_fleeing = True
+            self.animation_timer = 0
+            self.set_message(f"{character.name} tried to flee!")
+            
+        elif action == "ITEM":
+            # Enter inventory selection mode (handled externally)
+            # This will set action_processing to False when returning to battle
+            self.active_character = character
+            
+        elif action == "SKILL":
+            # Enter skill selection mode if character has any skills
+            skill_names = character.skillset.get_skill_names()
+            if skill_names:
+                self.in_skill_menu = True
+                self.selected_skill_option = 0
+                self.active_character = character
+                self.action_processing = False  # Allow skill selection
+            else:
+                self.set_message(f"{character.name} doesn't know any skills!")
                 self.action_processing = False
+                
+        elif action == "MAGIC":
+            # Enter spell selection mode if character has any spells
+            spell_names = character.spellbook.get_spell_names()
+            if spell_names:
+                self.in_spell_menu = True
+                self.selected_spell_option = 0
+                self.active_character = character
+                self.action_processing = False  # Allow spell selection
+            else:
+                self.set_message(f"{character.name} doesn't know any spells!")
+                self.action_processing = False
+                
+        elif action == "ULTIMATE":
+            # Enter ultimate selection mode if character has any ultimates
+            ultimate_names = character.ultimates.get_ultimate_names()
+            if ultimate_names:
+                self.in_ultimate_menu = True
+                self.selected_ultimate_option = 0
+                self.active_character = character
+                self.action_processing = False  # Allow ultimate selection
+            else:
+                self.set_message(f"{character.name} doesn't have any ultimate abilities!")
+                self.action_processing = False
+                
+        elif action == "STATUS":
+            # Show character status (not yet implemented)
+            self.set_message(f"{character.name} STATUS - HP: {character.hp}/{character.max_hp}, SP: {character.sp}/{character.max_sp}")
+            self.action_processing = False
 
     def handle_player_input(self, event):
-        # Only handle inputs when in targeting mode
+        """
+        Handle player input during battle.
+        
+        Args:
+            event: The pygame event
+            
+        Returns:
+            bool: True if input was handled, False otherwise
+        """
+        # Handle targeting mode input
         if self.in_targeting_mode and event.type == pygame.KEYDOWN:
             if event.key == pygame.K_LEFT or event.key == pygame.K_RIGHT:
-                # Navigate between enemies
+                # Navigate between targets
                 if event.key == pygame.K_LEFT:
                     self.targeting_system.previous_target()
                 else:
                     self.targeting_system.next_target()
                 return True
-                    
+                
+            elif event.key == pygame.K_TAB:
+                # Switch between targeting enemies and allies
+                self.targeting_system.switch_target_group()
+                
+                # Update message based on target group
+                if self.targeting_system.target_group == EnhancedTargetingSystem.ENEMIES:
+                    self.set_message(f"{self.active_character.name} is targeting an enemy")
+                else:
+                    self.set_message(f"{self.active_character.name} is targeting an ally")
+                return True
+                
             elif event.key == pygame.K_RETURN or event.key == pygame.K_SPACE:
                 # Select the current target
                 target = self.targeting_system.get_selected_target()
                 if target:
+                    # Get the current action type
+                    if self.in_spell_menu and self.current_spell:
+                        # Cast spell on target
+                        self._cast_spell(self.active_character, target, self.current_spell)
+                        self.in_spell_menu = False
+                    elif self.in_skill_menu and self.current_skill:
+                        # Use skill on target
+                        self._use_skill(self.active_character, target, self.current_skill)
+                        self.in_skill_menu = False
+                    elif self.in_ultimate_menu and self.current_ultimate:
+                        # Use ultimate on target
+                        self._use_ultimate(self.active_character, target, self.current_ultimate)
+                        self.in_ultimate_menu = False
+                    else:
+                        # Regular attack
+                        self._perform_attack(self.active_character, target)
+                    
                     # Disable targeting mode
                     self.in_targeting_mode = False
                     self.targeting_system.stop_targeting()
-                    # Perform attack on selected target
-                    self._perform_player_attack(target)
                 return True
-                    
+                
             elif event.key == pygame.K_ESCAPE:
                 # Cancel targeting and return to battle menu
                 self.in_targeting_mode = False
                 self.targeting_system.stop_targeting()
                 self.action_processing = False  # Reset to allow new actions
+                
+                # Reset any special menu states
+                self.in_spell_menu = False
+                self.in_skill_menu = False
+                self.in_ultimate_menu = False
+                
                 # Restore the previous message from log
                 if len(self.message_log) > 0:
                     self.full_message = self.message_log[-1]
                     self.displayed_message = self.full_message
+                    self.message_index = len(self.full_message)
                 return True
+                
+        # Handle spell menu navigation
+        elif self.in_spell_menu and event.type == pygame.KEYDOWN:
+            character = self.active_character
+            if not character:
+                return False
+                
+            spell_options = character.spellbook.get_spell_names() + ["BACK"]
+            
+            if event.key == pygame.K_UP:
+                self.selected_spell_option = (self.selected_spell_option - 1) % len(spell_options)
+                return True
+            elif event.key == pygame.K_DOWN:
+                self.selected_spell_option = (self.selected_spell_option + 1) % len(spell_options)
+                return True
+            elif event.key == pygame.K_RETURN or event.key == pygame.K_SPACE:
+                selected_spell = spell_options[self.selected_spell_option]
+                
+                if selected_spell == "BACK":
+                    # Return to main battle menu
+                    self.in_spell_menu = False
+                    self.action_processing = False
+                else:
+                    # Try to cast the spell
+                    spell = character.spellbook.get_spell(selected_spell)
+                    
+                    # Check if player has enough SP
+                    if character.sp < spell.sp_cost:
+                        self.set_message(f"Not enough SP to cast {selected_spell}!")
+                        return True
+                    
+                    # Determine if this spell needs a target
+                    if spell.effect_type == "damage":
+                        # Enter targeting mode
+                        self.in_targeting_mode = True
+                        self.targeting_system.start_targeting(character, EnhancedTargetingSystem.ENEMIES)
+                        self.current_spell = spell
+                        self.set_message(f"Select a target for {spell.name}")
+                    elif spell.effect_type == "healing":
+                        # Enter targeting mode for allies
+                        self.in_targeting_mode = True
+                        self.targeting_system.start_targeting(character, EnhancedTargetingSystem.ALLIES)
+                        self.current_spell = spell
+                        self.set_message(f"Select a target for {spell.name}")
+                    else:
+                        # Non-targeted spell
+                        self._cast_spell(character, character, spell)  # Self-target
+                        self.in_spell_menu = False
+                return True
+            elif event.key == pygame.K_ESCAPE:
+                # Exit spell menu
+                self.in_spell_menu = False
+                self.action_processing = False
+                return True
+        
+        # Handle skill menu navigation
+        elif self.in_skill_menu and event.type == pygame.KEYDOWN:
+            character = self.active_character
+            if not character:
+                return False
+                
+            skill_options = character.skillset.get_skill_names() + ["BACK"]
+            
+            if event.key == pygame.K_UP:
+                self.selected_skill_option = (self.selected_skill_option - 1) % len(skill_options)
+                return True
+            elif event.key == pygame.K_DOWN:
+                self.selected_skill_option = (self.selected_skill_option + 1) % len(skill_options)
+                return True
+            elif event.key == pygame.K_RETURN or event.key == pygame.K_SPACE:
+                selected_skill = skill_options[self.selected_skill_option]
+                
+                if selected_skill == "BACK":
+                    # Return to main battle menu
+                    self.in_skill_menu = False
+                    self.action_processing = False
+                else:
+                    # Try to use the skill
+                    skill = character.skillset.get_skill(selected_skill)
+                    
+                    # Check resource requirements
+                    if skill.cost_type == "sp" and character.sp < skill.sp_cost:
+                        self.set_message(f"Not enough SP to use {selected_skill}!")
+                        return True
+                    elif skill.cost_type == "hp" and character.hp <= skill.hp_cost:
+                        self.set_message(f"Not enough HP to use {selected_skill}!")
+                        return True
+                    elif skill.cost_type == "both" and (character.sp < skill.sp_cost or character.hp <= skill.hp_cost):
+                        self.set_message(f"Not enough resources to use {selected_skill}!")
+                        return True
+                    
+                    # Determine if this skill needs a target
+                    if skill.effect_type == "analyze":
+                        # Enter targeting mode for enemies
+                        self.in_targeting_mode = True
+                        self.targeting_system.start_targeting(character, EnhancedTargetingSystem.ENEMIES)
+                        self.current_skill = skill
+                        self.set_message(f"Select a target for {skill.name}")
+                    else:
+                        # Self-targeting skill for now
+                        self._use_skill(character, character, skill)
+                        self.in_skill_menu = False
+                return True
+            elif event.key == pygame.K_ESCAPE:
+                # Exit skill menu
+                self.in_skill_menu = False
+                self.action_processing = False
+                return True
+        
+        # Handle ultimate menu navigation
+        elif self.in_ultimate_menu and event.type == pygame.KEYDOWN:
+            character = self.active_character
+            if not character:
+                return False
+                
+            ultimate_options = character.ultimates.get_ultimate_names() + ["BACK"]
+            
+            if event.key == pygame.K_UP:
+                self.selected_ultimate_option = (self.selected_ultimate_option - 1) % len(ultimate_options)
+                return True
+            elif event.key == pygame.K_DOWN:
+                self.selected_ultimate_option = (self.selected_ultimate_option + 1) % len(ultimate_options)
+                return True
+            elif event.key == pygame.K_RETURN or event.key == pygame.K_SPACE:
+                selected_ultimate = ultimate_options[self.selected_ultimate_option]
+                
+                if selected_ultimate == "BACK":
+                    # Return to main battle menu
+                    self.in_ultimate_menu = False
+                    self.action_processing = False
+                else:
+                    # Try to use the ultimate
+                    ultimate = character.ultimates.get_ultimate(selected_ultimate)
+                    
+                    # Check if the ultimate is available
+                    if not ultimate.available:
+                        self.set_message(f"{selected_ultimate} has already been used! Rest to restore it.")
+                        return True
+                    
+                    # Determine if this ultimate needs a target
+                    if ultimate.effect_type == "damage":
+                        # Enter targeting mode
+                        self.in_targeting_mode = True
+                        self.targeting_system.start_targeting(character, EnhancedTargetingSystem.ENEMIES)
+                        self.current_ultimate = ultimate
+                        self.set_message(f"Select a target for {ultimate.name}")
+                    else:
+                        # Self-targeting ultimate for now
+                        self._use_ultimate(character, character, ultimate)
+                        self.in_ultimate_menu = False
+                return True
+            elif event.key == pygame.K_ESCAPE:
+                # Exit ultimate menu
+                self.in_ultimate_menu = False
+                self.action_processing = False
+                return True
+        
+        # Handle regular battle menu navigation
+        elif self.is_player_turn() and event.type == pygame.KEYDOWN:
+            # Only handle input during player's turn and when no animation is in progress
+            if (self.character_attacking or self.character_defending or self.character_casting or 
+                self.character_using_skill or self.character_using_ultimate or self.character_fleeing or
+                self.action_delay > 0 or self.action_processing):
+                return False
+                
+            # Only accept inputs when text is fully displayed
+            if self.message_index < len(self.full_message):
+                # If message is still scrolling, pressing any key will display it immediately
+                self.displayed_message = self.full_message
+                self.message_index = len(self.full_message)
+                return True
+                
+            # Get the current character whose turn it is
+            character = self.get_current_character()
+            if not character:
+                return False
+                
+            # Handle navigation and selection
+            if event.key == pygame.K_UP:
+                # Move up in the same column with wrap-around
+                if self.selected_option >= 4:  # Right column
+                    # Move up in right column (wrap to bottom if at top)
+                    current_position = self.selected_option - 4
+                    new_position = (current_position - 1) % 4
+                    self.selected_option = 4 + new_position
+                else:  # Left column
+                    # Move up in left column (wrap to bottom if at top)
+                    self.selected_option = (self.selected_option - 1) % 4
+                return True
+            elif event.key == pygame.K_DOWN:
+                # Move down in the same column with wrap-around
+                if self.selected_option >= 4:  # Right column
+                    # Move down in right column
+                    current_position = self.selected_option - 4
+                    new_position = (current_position + 1) % 4
+                    self.selected_option = 4 + new_position
+                else:  # Left column
+                    # Move down in left column
+                    self.selected_option = (self.selected_option + 1) % 4
+                return True
+            elif event.key == pygame.K_LEFT:
+                # Move to left column from right, or wrap around to right column from left
+                if self.selected_option >= 4:  # Right column to left
+                    self.selected_option -= 4
+                else:  # Left column to right (wrap around)
+                    self.selected_option += 4
+                return True
+            elif event.key == pygame.K_RIGHT:
+                # Move to right column from left, or wrap around to left column from right
+                if self.selected_option < 4:  # Left column to right
+                    self.selected_option += 4
+                else:  # Right column to left (wrap around)
+                    self.selected_option -= 4
+                return True
+            elif event.key == pygame.K_RETURN or event.key == pygame.K_SPACE:
+                selected_action = self.battle_options[self.selected_option]
+                self.process_action(selected_action, character)
+                return True
+            
+        # Check if battle has ended and player pressed ENTER to continue
+        elif self.battle_over and self.message_index >= len(self.full_message):
+            if event.type == pygame.KEYDOWN and (event.key == pygame.K_RETURN or event.key == pygame.K_SPACE):
+                # Signal that battle is ended (handled by main game loop)
+                return True
+                
         return False
     
-    def cast_spell(self, spell_name):
+    def _perform_attack(self, attacker, target):
         """
-        Process casting a spell.
+        Execute an attack from one character to a target.
         
         Args:
-            spell_name: The name of the spell to cast
+            attacker: The attacking character/enemy
+            target: The target of the attack
         """
-        if self.turn == 0 and not self.action_processing:
-            # Get the spell data
-            spell = self.player.spellbook.get_spell(spell_name)
-            if not spell:
-                self.set_message(f"You don't know the spell {spell_name}!")
-                return False
-                
-            # Check if player has enough SP
-            if self.player.sp < spell.sp_cost:
-                self.set_message(f"Not enough SP to cast {spell_name}!")
-                return False
-            
-            # For damage spells, we need a target
-            if spell.effect_type == "damage":
-                if len(self.enemies) == 1:
-                    # With just one enemy, target it directly
-                    target = self.enemies[0]
-                else:
-                    # With multiple enemies, we need targeting mode
-                    self.in_targeting_mode = True
-                    self.targeting_system.start_targeting(self.enemies)
-                    self.current_spell = spell  # Store the spell for later use
-                    self.set_message(f"Select a target for {spell_name}.")
-                    return True
-            else:
-                # Non-targeting spells (like healing) continue as normal
-                target = None
-                
-            # Set the current spell for animation
-            self.current_spell = spell
-            self.action_processing = True
-                
-            # Start spell casting animation
-            self.player_casting = True
-            self.animation_timer = 0
-                
-            # Use the SP
-            self.player.use_sp(spell.sp_cost)
-                
-            # Handle spell effects
-            if spell.effect_type == "damage" and target:
-                # Calculate magic damage
-                damage = self.calculate_magic_damage(self.player, target, spell.base_power)
-                target.take_damage(damage)
-                    
-                # Store the message for later display after animation
-                if target.is_defeated():
-                    self.pending_message = f"Cast {spell_name}! Dealt {damage} magic damage! Enemy defeated!"
-                    self.pending_victory = True
-                else:
-                    self.pending_message = f"Cast {spell_name}! Dealt {damage} magic damage!"
-                
-            elif spell.effect_type == "healing":
-                # For healing spells, add intelligence to the base power
-                healing_amount = spell.base_power + self.player.intelligence
-                    
-                # Store original HP to calculate actual healing
-                original_hp = self.player.hp
-                    
-                # Apply healing (capped at max_hp)
-                self.player.hp = min(self.player.hp + healing_amount, self.player.max_hp)
-                    
-                # Calculate actual healing done
-                actual_healing = self.player.hp - original_hp
-                    
-                # Set pending message
-                self.pending_message = f"Cast {spell_name}! Restored {actual_healing} HP!"
-            
-            self.action_processing = True
-                
-            return True
+        # Start attack animation
+        self.character_attacking = True
+        self.animation_timer = 0
+        self.action_processing = True
+        self.active_character = attacker
+        self.target = target
         
-        return False
+        # Calculate and use hit chance
+        hit_chance = self._calculate_hit_chance(attacker, target)
+        attack_hits = random.random() < hit_chance
+        
+        if attack_hits:
+            # Calculate damage
+            damage = self._calculate_damage(attacker, target)
+            
+            # Store damage for application after animation
+            self.pending_damage = damage
+            
+            # Set message based on attacker and target
+            attacker_name = attacker.name
+            target_name = target.name
+            
+            self.pending_message = f"{attacker_name} attacked {target_name} for {damage} damage!"
+        else:
+            # Attack missed
+            attacker_name = attacker.name
+            target_name = target.name
+            self.pending_message = f"{attacker_name}'s attack on {target_name} missed!"
+            self.pending_damage = 0
     
-    def use_skill(self, skill_name):
+    def _cast_spell(self, caster, target, spell):
         """
-        Process using a skill.
+        Cast a spell from a character to a target.
         
         Args:
-            skill_name: The name of the skill to use
-            
-        Returns:
-            bool: True if skill was used successfully, False otherwise
+            caster: The character casting the spell
+            target: The target of the spell
+            spell: The spell being cast
         """
-        if self.turn == 0 and not self.action_processing:
-            # Get the skill data
-            skill = self.player.skillset.get_skill(skill_name)
-            if not skill:
-                self.set_message(f"You don't know the skill {skill_name}!")
-                return False
-                
-            # Check if player has enough resources to use the skill
-            if skill.cost_type == "sp" and self.player.sp < skill.sp_cost:
-                self.set_message(f"Not enough SP to use {skill_name}!")
-                return False
-            elif skill.cost_type == "hp" and self.player.hp <= skill.hp_cost:
-                self.set_message(f"Not enough HP to use {skill_name}!")
-                return False
-            elif skill.cost_type == "both" and (self.player.sp < skill.sp_cost or self.player.hp <= skill.hp_cost):
-                self.set_message(f"Not enough resources to use {skill_name}!")
-                return False
-                
-            # For skills that need a target, use targeting system
-            if skill.effect_type == "analyze":
-                if len(self.enemies) == 1:
-                    # With just one enemy, target it directly
-                    target = self.enemies[0]
-                else:
-                    # With multiple enemies, we need targeting mode
-                    self.in_targeting_mode = True
-                    self.targeting_system.start_targeting(self.enemies)
-                    self.current_skill = skill  # Store the skill for later use
-                    self.set_message(f"Select a target for {skill_name}.")
-                    return True
-            else:
-                # Non-targeting skills continue as normal
-                target = None
-                    
-            # Set the current skill for animation
-            self.current_skill = skill
-            self.action_processing = True
-                
-            # Start skill animation
-            self.player_using_skill = True
-            self.animation_timer = 0
-                
-            # Apply resource costs
-            if skill.sp_cost > 0:
-                self.player.use_sp(skill.sp_cost)
-            if skill.hp_cost > 0:
-                self.player.take_damage(skill.hp_cost)
-                
-            # Handle skill effects
-            if skill.effect_type == "analyze" and target:
-                # Store the message for later display after animation
-                self.pending_message = f"Used {skill_name}! {target.__class__.__name__} stats:\nHP: {target.hp}/{target.max_hp}\nATK: {target.attack}\nDEF: {target.defense}\nSPD: {target.spd}\nACC: {target.acc}\nRES: {target.resilience}"
-                
-            # Add more skill effect types here as needed
-
-            self.action_processing = True
-            
-            return True
+        # Start spell casting animation
+        self.character_casting = True
+        self.animation_timer = 0
+        self.action_processing = True
+        self.active_character = caster
+        self.target = target
+        self.current_spell = spell
         
-        return False
-
-    def use_ultimate(self, ultimate_name):
+        # Apply SP cost
+        caster.use_sp(spell.sp_cost)
+        
+        # Handle spell effects based on type
+        if spell.effect_type == "damage":
+            # Calculate magic damage
+            damage = self._calculate_magic_damage(caster, target, spell.base_power)
+            
+            # Store damage for application after animation
+            self.pending_damage = damage
+            
+            # Set message
+            caster_name = caster.name
+            target_name = target.name
+            self.pending_message = f"{caster_name} cast {spell.name} on {target_name} for {damage} magic damage!"
+        
+        elif spell.effect_type == "healing":
+            # Calculate healing amount (add intelligence to base power)
+            healing_amount = spell.base_power + caster.intelligence
+            
+            # Store original HP to calculate actual healing
+            original_hp = target.hp
+            
+            # Store healing info for application after animation
+            self.pending_damage = -healing_amount  # Negative indicates healing
+            
+            # Set message
+            caster_name = caster.name
+            target_name = target.name
+            self.pending_message = f"{caster_name} cast {spell.name} on {target_name} to restore HP!"
+    
+    def _use_skill(self, user, target, skill):
         """
-        Process using an ultimate ability.
+        Use a skill from a character on a target.
         
         Args:
-            ultimate_name: The name of the ultimate to use
-            
-        Returns:
-            bool: True if ultimate was used successfully, False otherwise
+            user: The character using the skill
+            target: The target of the skill
+            skill: The skill being used
         """
-        if self.turn == 0 and not self.action_processing:
-            # Get the ultimate data
-            ultimate = self.player.ultimates.get_ultimate(ultimate_name)
-            if not ultimate:
-                self.set_message(f"You don't know the ultimate {ultimate_name}!")
-                return False
-                
-            # Check if the ultimate is available
-            if not ultimate.available:
-                self.set_message(f"{ultimate_name} has already been used! Rest to restore it.")
-                return False
-                
-            # For ultimates that need a target, use targeting system
-            if ultimate.effect_type == "damage":
-                if len(self.enemies) == 1:
-                    # With just one enemy, target it directly
-                    target = self.enemies[0]
-                else:
-                    # With multiple enemies, we need targeting mode
-                    self.in_targeting_mode = True
-                    self.targeting_system.start_targeting(self.enemies)
-                    self.current_ultimate = ultimate  # Store the ultimate for later use
-                    self.set_message(f"Select a target for {ultimate_name}.")
-                    return True
-            else:
-                # Non-targeting ultimates continue as normal
-                target = None
-                
-            # Set the current ultimate for animation
-            self.current_ultimate = ultimate
-            self.action_processing = True
-                
-            # Start ultimate animation
-            self.player_using_ultimate = True
-            self.animation_timer = 0
-                
-            # Handle ultimate effects
-            if ultimate.effect_type == "damage" and target:
-                # Calculate damage with power multiplier
-                damage = int(self.player.attack * ultimate.power_multiplier)
-                
-                # Apply damage to target
-                target.take_damage(damage)
-                
-                # Mark as used
-                ultimate.available = False
-                
-                # Store the message for later display after animation
-                if target.is_defeated():
-                    self.pending_message = f"Used {ultimate_name}! Dealt a massive {damage} damage! Enemy defeated!"
-                    self.pending_victory = True
-                else:
-                    self.pending_message = f"Used {ultimate_name}! Dealt a massive {damage} damage!"
-                
-            # Add more ultimate effect types here as needed
-
-            self.action_processing = True
-                
-            return True
+        # Start skill animation
+        self.character_using_skill = True
+        self.animation_timer = 0
+        self.action_processing = True
+        self.active_character = user
+        self.target = target
+        self.current_skill = skill
         
-        return False
+        # Apply resource costs
+        if skill.cost_type == "sp" or skill.cost_type == "both":
+            user.use_sp(skill.sp_cost)
+            
+        if skill.cost_type == "hp" or skill.cost_type == "both":
+            user.take_damage(skill.hp_cost)
+        
+        # Handle skill effects based on type
+        if skill.effect_type == "analyze":
+            # Get target stats
+            target_stats = (
+                f"{target.name} stats:\n"
+                f"HP: {target.hp}/{target.max_hp}\n"
+                f"ATK: {target.attack}\n"
+                f"DEF: {target.defense}\n"
+                f"SPD: {target.spd}\n"
+                f"ACC: {target.acc}\n"
+                f"RES: {target.resilience}"
+            )
+            
+            # Set message
+            user_name = user.name
+            target_name = target.name
+            self.pending_message = f"{user_name} used {skill.name} on {target_name}! {target_stats}"
+            self.pending_damage = 0
+    
+    def _use_ultimate(self, user, target, ultimate):
+        """
+        Use an ultimate ability from a character on a target.
+        
+        Args:
+            user: The character using the ultimate
+            target: The target of the ultimate
+            ultimate: The ultimate ability being used
+        """
+        # Start ultimate animation
+        self.character_using_ultimate = True
+        self.animation_timer = 0
+        self.action_processing = True
+        self.active_character = user
+        self.target = target
+        self.current_ultimate = ultimate
+        
+        # Mark ultimate as used
+        ultimate.available = False
+        
+        # Handle ultimate effects based on type
+        if ultimate.effect_type == "damage":
+            # Calculate damage with power multiplier
+            damage = int(user.attack * ultimate.power_multiplier)
+            
+            # Store damage for application after animation
+            self.pending_damage = damage
+            
+            # Set message
+            user_name = user.name
+            target_name = target.name
+            self.pending_message = f"{user_name} used {ultimate.name} on {target_name} for a massive {damage} damage!"
 
     # Helper method to check if all enemies are defeated:
     def _check_all_enemies_defeated(self):
@@ -610,101 +890,6 @@ class BattleSystem:
             bool: True if all enemies are defeated, False otherwise
         """
         return all(enemy.is_defeated() for enemy in self.enemies)
-    
-    def _draw_ultimate_menu(self, screen, font, small_font):
-        """
-        Draw the ultimate ability selection menu with scaling support.
-        
-        Args:
-            screen: The pygame surface to draw on
-            font: The main font to use
-            small_font: The smaller font for details
-        """
-        from utils import scale_position, scale_dimensions
-        from constants import RED, GREEN
-        
-        # Get current screen dimensions
-        current_width, current_height = screen.get_size()
-        original_width, original_height = 800, 600  # Original design resolution
-        
-        # Scale menu dimensions and position
-        ultimate_box_width, ultimate_box_height = scale_dimensions(
-            250, 150, original_width, original_height, current_width, current_height
-        )
-        ultimate_box_x, ultimate_box_y = scale_position(
-            20, SCREEN_HEIGHT - 150 - 5, original_width, original_height, current_width, current_height
-        )
-        
-        # Draw box background and border
-        pygame.draw.rect(screen, BLACK, (ultimate_box_x, ultimate_box_y, ultimate_box_width, ultimate_box_height))
-        border_width = max(1, int(2 * (current_width / original_width)))
-        pygame.draw.rect(screen, RED, (ultimate_box_x, ultimate_box_y, ultimate_box_width, ultimate_box_height), border_width)
-        
-        # Draw "Ultimate" header
-        ultimate_text = font.render("Ultimate", True, RED)
-        header_x = ultimate_box_x + (ultimate_box_width // 2) - (ultimate_text.get_width() // 2)
-        header_y = ultimate_box_y + int(10 * (current_height / original_height))
-        screen.blit(ultimate_text, (header_x, header_y))
-        
-        # Get ultimate list from player's ultimates
-        ultimate_names = self.player.ultimates.get_ultimate_names()
-        # Add "BACK" option at the end
-        options = ultimate_names + ["BACK"]
-        
-        # Scale text positions
-        option_x = ultimate_box_x + int(30 * (current_width / original_width))
-        option_y_base = ultimate_box_y + int(40 * (current_height / original_height))
-        option_line_height = int(25 * (current_height / original_height))
-        status_x = ultimate_box_x + int(150 * (current_width / original_width))
-        
-        # Draw each ultimate with availability status
-        for i, ultimate_name in enumerate(options):
-            option_y = option_y_base + i * option_line_height
-            
-            if ultimate_name == "BACK":
-                # Draw BACK option
-                if i == self.selected_ultimate_option:
-                    option_text = font.render(f"> {ultimate_name}", True, WHITE)
-                else:
-                    option_text = font.render(f"  {ultimate_name}", True, GRAY)
-                screen.blit(option_text, (option_x, option_y))
-            else:
-                # Get the ultimate data
-                ultimate = self.player.ultimates.get_ultimate(ultimate_name)
-                
-                # Determine text color based on whether ultimate is available
-                is_available = ultimate.available
-                
-                if i == self.selected_ultimate_option:
-                    # Selected ultimate
-                    if is_available:
-                        name_color = WHITE  # Can use
-                    else:
-                        name_color = RED    # Can't use (already used)
-                    option_text = font.render(f"> {ultimate_name}", True, name_color)
-                else:
-                    # Unselected ultimate
-                    if is_available:
-                        name_color = GRAY   # Can use
-                    else:
-                        name_color = RED    # Can't use (already used)
-                    option_text = font.render(f"  {ultimate_name}", True, name_color)
-                
-                # Draw ultimate name
-                screen.blit(option_text, (option_x, option_y))
-                
-                # Draw availability status
-                status_text = small_font.render("READY" if is_available else "USED", True, 
-                                            GREEN if is_available else RED)
-                screen.blit(status_text, (status_x, option_y))
-        
-        # Draw ultimate description for selected ultimate
-        if self.selected_ultimate_option < len(ultimate_names):
-            ultimate = self.player.ultimates.get_ultimate(options[self.selected_ultimate_option])
-            if ultimate:
-                desc_y = option_y_base + len(options) * option_line_height
-                desc_text = small_font.render(ultimate.description, True, WHITE)
-                screen.blit(desc_text, (option_x, desc_y))
     
     def set_message(self, message):
         """
@@ -758,178 +943,149 @@ class BattleSystem:
         current_combatant = self.turn_order.get_current()
         
         # Handle counter passive effect after enemy attack message is shown
-        if self.counter_triggered and self.turn == 1:
+        if self.counter_triggered and not isinstance(current_combatant, Player):
             # Handle counter attack
-            active_character = self.party.active_members[self.active_character_index] if self.active_character_index < len(self.party.active_members) else self.party.active_members[0]
+            character = self.active_character
             
             # Start counter-attack animation
-            self.player_countering = True
+            self.character_countering = True
             self.counter_animation_timer = 0
             self.counter_triggered = False
         
         # Handle counter-attack animation
-        elif self.player_countering:
+        elif self.character_countering:
             self.counter_animation_timer += 1
             if self.counter_animation_timer >= self.animation_duration:
-                self.player_countering = False
+                self.character_countering = False
                 self.counter_animation_timer = 0
                 
                 # Now that counter animation is complete, display the message
                 self.set_message(self.counter_message)
                 
-                # Get the current enemy safely
-                if self.current_enemy_index < len(self.enemies):
-                    current_enemy = self.enemies[self.current_enemy_index]
-                    
-                    # Check if enemy was defeated by the counter
-                    if current_enemy.is_defeated():
-                        # Award XP to player
-                        xp_gained = current_enemy.xp
-                        self.player.gain_experience(xp_gained)
-                        
-                        # Add XP message to the log
-                        self.message_log.append(f"You gained {xp_gained} XP!")
-                        if len(self.message_log) > self.max_log_size:
-                            self.message_log.pop(0)
-                        
-                        # Check if all enemies are defeated
-                        if self._check_all_enemies_defeated():
-                            self.battle_over = True
-                            self.victory = True
-                        else:
-                            # Move to next enemy
-                            self.current_enemy_index += 1
-                            self.enemy_turn_processed = False
+                # Check if enemy was defeated by the counter
+                if self.target and self.target.is_defeated():
+                    # Check if all enemies are defeated
+                    if self._check_all_enemies_defeated():
+                        self.victory = True
+                        self.battle_over = True
+                        self.set_message("Victory! All enemies defeated!")
                     else:
-                        # Switch to player's turn after counter effect
-                        self.turn = 0
-                        self.action_processing = False
+                        # Remove the defeated enemy from turn order
+                        self.turn_order.remove_combatant(self.target)
                 else:
-                    # Safety fallback
-                    self.turn = 0
+                    # Only advance turn if counter didn't defeat target
+                    current_combatant = self.turn_order.advance()
                     self.action_processing = False
-            return
-
+        
         # Handle player attack animation
-        if self.player_attacking:
+        elif self.character_attacking:
             self.animation_timer += 1
             if self.animation_timer >= self.animation_duration:
-                self.player_attacking = False
+                self.character_attacking = False
                 self.animation_timer = 0
                 
-                # Now that animation is complete, display the message
+                # Apply damage to target
+                if self.target and self.pending_damage > 0:
+                    # Check for passive triggers when taking damage
+                    passive_triggered, passive_message = self.target.take_damage(
+                        self.pending_damage, 
+                        damage_type="physical", 
+                        attacker=self.active_character
+                    )
+                    
+                    # Store counter information if passive was triggered
+                    if passive_triggered:
+                        self.counter_triggered = True
+                        self.counter_message = passive_message
+                
+                # Display the attack message
                 self.set_message(self.pending_message)
                 
-                # If enemy was defeated, end battle and award XP
-                if self.pending_victory:
-                    # Award XP to player
-                    xp_gained = self.enemy.xp
-                    self.player.gain_experience(xp_gained)
+                # Check if target was defeated
+                if self.target and self.target.is_defeated():
+                    # Award XP to attacker
+                    if hasattr(self.target, 'xp'):
+                        xp_gained = self.target.xp
+                        self.active_character.gain_experience(xp_gained)
+                        self.message_log.append(f"{self.active_character.name} gained {xp_gained} XP!")
                     
-                    # Add XP message to the log
-                    self.message_log.append(f"You gained {xp_gained} XP!")
-                    if len(self.message_log) > self.max_log_size:
-                        self.message_log.pop(0)
-                    
-                    self.battle_over = True
-                    self.victory = True
-                else:
-                    # Reset player's defense multiplier at end of turn if defending
-                    self.player.end_turn()
-                    
-                    # Switch to enemy's turn
-                    self.turn = 1
-                    self.enemy_turn_processed = False  # Reset the flag
-                        
+                    # Check if all enemies are defeated
+                    if self._check_all_enemies_defeated():
+                        self.victory = True
+                        self.battle_over = True
+                        self.set_message("Victory! All enemies defeated!")
+                        return
+                    else:
+                        # Remove the defeated enemy from turn order
+                        self.turn_order.remove_combatant(self.target)
+                
+                # End current character's turn if not already done
+                if self.active_character:
+                    self.active_character.end_turn()
+                
+                # Advance to next combatant if battle is not over
+                if not self.battle_over:
+                    current_combatant = self.turn_order.advance()
+                    self.action_processing = False
+        
+        # Handle player skill usage animation
+        elif self.character_using_skill:
+            self.animation_timer += 1
+            if self.animation_timer >= self.animation_duration:
+                self.character_using_skill = False
+                self.animation_timer = 0
+                
+                # Display the skill message
+                self.set_message(self.pending_message)
+                
+                # End current character's turn
+                if self.active_character:
+                    self.active_character.end_turn()
+                
+                # Advance to next combatant
+                current_combatant = self.turn_order.advance()
                 self.action_processing = False
         
-        # Handle player spell casting animation
-        elif self.player_casting:
+        # Handle player ultimate usage animation
+        elif self.character_using_ultimate:
             self.animation_timer += 1
-            if self.animation_timer >= self.spell_animation_duration:
-                self.player_casting = False
+            if self.animation_timer >= self.animation_duration:
+                self.character_using_ultimate = False
                 self.animation_timer = 0
-                self.current_spell = None
                 
-                # Now that animation is complete, display the message
+                # Apply ultimate effect to target
+                if self.target and self.pending_damage > 0:
+                    self.target.take_damage(self.pending_damage)
+                
+                # Display the ultimate message
                 self.set_message(self.pending_message)
                 
-                # If enemy was defeated, end battle and award XP
-                if self.pending_victory:
-                    # Award XP to player
-                    xp_gained = self.enemy.xp
-                    self.player.gain_experience(xp_gained)
+                # Check if target was defeated
+                if self.target and self.target.is_defeated():
+                    # Award XP to character
+                    if hasattr(self.target, 'xp'):
+                        xp_gained = self.target.xp
+                        self.active_character.gain_experience(xp_gained)
+                        self.message_log.append(f"{self.active_character.name} gained {xp_gained} XP!")
                     
-                    # Add XP message to the log
-                    self.message_log.append(f"You gained {xp_gained} XP!")
-                    if len(self.message_log) > self.max_log_size:
-                        self.message_log.pop(0)
-                    
-                    self.battle_over = True
-                    self.victory = True
-                else:
-                    # Reset player's defense multiplier at end of turn if defending
-                    self.player.end_turn()
-                    
-                    # Switch to enemy's turn
-                    self.turn = 1
-                    self.enemy_turn_processed = False
+                    # Check if all enemies are defeated
+                    if self._check_all_enemies_defeated():
+                        self.victory = True
+                        self.battle_over = True
+                        self.set_message("Victory! All enemies defeated!")
+                        return
+                    else:
+                        # Remove the defeated enemy from turn order
+                        self.turn_order.remove_combatant(self.target)
                 
-                self.action_processing = False
-        
-        # Handle player skill animation
-        elif self.player_using_skill:
-            self.animation_timer += 1
-            if self.animation_timer >= self.skill_animation_duration:
-                self.player_using_skill = False
-                self.animation_timer = 0
-                self.current_skill = None
+                # End current character's turn
+                if self.active_character:
+                    self.active_character.end_turn()
                 
-                # Now that animation is complete, display the message
-                self.set_message(self.pending_message)
-                
-                # Reset player's defense multiplier at end of turn if defending
-                self.player.end_turn()
-                
-                # Switch to enemy's turn
-                self.turn = 1
-                self.enemy_turn_processed = False
-
-                self.action_processing = False
-        
-        # Handle player ultimate animation
-        elif self.player_using_ultimate:
-            self.animation_timer += 1
-            if self.animation_timer >= self.ultimate_animation_duration:
-                self.player_using_ultimate = False
-                self.animation_timer = 0
-                self.current_ultimate = None
-                
-                # Now that animation is complete, display the message
-                self.set_message(self.pending_message)
-                
-                # If enemy was defeated, end battle and award XP
-                if self.pending_victory:
-                    # Award XP to player
-                    xp_gained = self.enemy.xp
-                    self.player.gain_experience(xp_gained)
-                    
-                    # Add XP message to the log
-                    self.message_log.append(f"You gained {xp_gained} XP!")
-                    if len(self.message_log) > self.max_log_size:
-                        self.message_log.pop(0)
-                    
-                    self.battle_over = True
-                    self.victory = True
-                else:
-                    # Reset player's defense multiplier at end of turn if defending
-                    self.player.end_turn()
-                    
-                    # Switch to enemy's turn
-                    self.turn = 1
-                    self.enemy_turn_processed = False
-                
-                self.action_processing = False
+                # Advance to next combatant if battle is not over
+                if not self.battle_over:
+                    current_combatant = self.turn_order.advance()
+                    self.action_processing = False
         
         # Handle enemy attack animation
         elif self.enemy_attacking:
@@ -938,14 +1094,13 @@ class BattleSystem:
                 self.enemy_attacking = False
                 self.animation_timer = 0
                 
-                # Apply damage to player (only if attack didn't miss)
-                if "missed" not in self.pending_message:
+                # Apply damage to target (only if attack didn't miss)
+                if "missed" not in self.pending_message and self.target and self.pending_damage > 0:
                     # We pass the battle system and current enemy for potential passive triggers
-                    current_enemy = self.enemies[self.current_enemy_index]
-                    passive_triggered, passive_message = self.player.take_damage(
+                    passive_triggered, passive_message = self.target.take_damage(
                         self.pending_damage, 
                         damage_type="physical", 
-                        attacker=current_enemy, 
+                        attacker=self.current_enemy,
                         battle_system=self
                     )
                     
@@ -961,89 +1116,406 @@ class BattleSystem:
                     self.set_message(self.pending_message)
                     self.counter_triggered = False
                 
-                if self.player.is_defeated():
-                    self.set_message(f"Enemy attacked for {self.pending_damage} damage! You were defeated!")
-                    self.battle_over = True
-                    self.counter_triggered = False
-                else:
-                    # End current enemy's turn
-                    current_enemy = self.enemies[self.current_enemy_index]
-                    current_enemy.end_turn()
-                    
-                    # Move to the next enemy
-                    self.current_enemy_index += 1
-                    
-                    # If there are more enemies to process
-                    if self.current_enemy_index < len(self.enemies):
-                        # Process the next enemy on the next frame
-                        self.enemy_turn_processed = False
+                # Check if target was defeated
+                if self.target and self.target.is_defeated():
+                    # Check if all party members are defeated
+                    if self._check_all_party_defeated():
+                        self.battle_over = True
+                        self.victory = False
+                        self.set_message("Defeat! All party members have fallen!")
+                        return
                     else:
-                        # All enemies have acted, back to player's turn
-                        self.current_enemy_index = 0
-                        self.turn = 0
-                        self.action_processing = False
+                        # Remove the defeated character from turn order
+                        self.turn_order.remove_combatant(self.target)
+                
+                # End current enemy's turn
+                if self.current_enemy:
+                    self.current_enemy.end_turn()
+                
+                # Advance to next combatant if battle is not over
+                if not self.battle_over and not self.counter_triggered:
+                    current_combatant = self.turn_order.advance()
+                    self.action_processing = False
         
         # Handle fleeing animation
-        elif self.player_fleeing:
+        elif self.character_fleeing:
             self.animation_timer += 1
             if self.animation_timer >= self.flee_animation_duration:
-                self.player_fleeing = False
+                self.character_fleeing = False
                 self.animation_timer = 0
-                self.set_message("You fled from battle!")
+                self.set_message(f"{self.active_character.name} fled from battle!")
                 self.battle_over = True
                 self.fled = True
-
                 self.action_processing = False
         
         # Handle delay for the defend action
-        elif self.turn == 0 and "defending" in self.full_message:
+        elif self.character_defending:
             self.action_delay += 1
             if self.action_delay >= self.action_delay_duration:
                 self.action_delay = 0
-                # Switch to enemy turn
-                self.turn = 1
-                self.enemy_turn_processed = False  # Reset the flag
+                self.character_defending = False
+                
+                # End current character's turn
+                if self.active_character:
+                    self.active_character.end_turn()
+                
+                # Advance to next combatant
+                current_combatant = self.turn_order.advance()
                 self.action_processing = False
         
         # Process enemy turn if it's enemy's turn and no animation is active
-        elif self.turn == 1 and not self.enemy_attacking and not self.enemy_turn_processed:
+        elif not self.is_player_turn() and not self.enemy_attacking and not self.action_processing:
             self.process_enemy_turn()
-            self.enemy_turn_processed = True  # Set the flag to prevent multiple attacks
-
-        self._ensure_battle_flow_consistency()
-                    
-    def _perform_player_attack(self, target_enemy):
-        """
-        Execute the player's attack on a specific enemy.
         
-        Args:
-            target_enemy: The enemy to attack
-        """
-        # Start player attack animation
-        self.player_attacking = True
+        # Ensure battle flow consistency
+        self._ensure_battle_flow_consistency()
+    
+    def process_enemy_turn(self):
+        """Process the current enemy's turn in battle."""
+        # Get the current enemy
+        self.current_enemy = self.get_current_enemy()
+        if not self.current_enemy:
+            return
+        
+        # Start enemy attack animation
+        self.enemy_attacking = True
         self.animation_timer = 0
         self.action_processing = True
         
-        # Calculate and use hit chance
-        hit_chance = self.calculate_hit_chance(self.player, target_enemy)
+        # Choose a random target from active party members
+        valid_targets = [c for c in self.party.active_members if not c.is_defeated()]
+        if not valid_targets:
+            # No valid targets, end battle
+            self.battle_over = True
+            self.victory = False
+            self.set_message("Defeat! All party members have fallen!")
+            return
+        
+        # Select random target for now (could be more strategic in the future)
+        target = random.choice(valid_targets)
+        self.target = target
+        
+        # Calculate hit chance and determine if attack hits
+        hit_chance = self._calculate_hit_chance(self.current_enemy, target)
         attack_hits = random.random() < hit_chance
         
         if attack_hits:
             # Calculate damage
-            damage = self.calculate_damage(self.player, target_enemy)
-            target_enemy.take_damage(damage)
+            damage = self._calculate_damage(self.current_enemy, target)
+            self.pending_damage = damage
             
-            # Store the message for later display
-            if target_enemy.is_defeated():
-                self.pending_message = f"You attacked for {damage} damage! Enemy defeated!"
-                
-                # Check if all enemies are defeated
-                self.pending_victory = self._check_all_enemies_defeated()
+            # Prepare message
+            enemy_name = self.current_enemy.name
+            target_name = target.name
+            
+            if target.defending:
+                original_damage = damage * 2  # Approximate original damage
+                self.pending_message = f"{enemy_name} attacked {target_name}! Defense reduced damage from {original_damage} to {damage}!"
             else:
-                self.pending_message = f"You attacked for {damage} damage!"
+                self.pending_message = f"{enemy_name} attacked {target_name} for {damage} damage!"
         else:
             # Attack missed
-            self.pending_message = f"Your attack missed!"
+            enemy_name = self.current_enemy.name
+            target_name = target.name
+            
+            if target.defending:
+                self.pending_message = f"{enemy_name}'s attack on {target_name} missed! Their defensive stance helped them evade!"
+            else:
+                self.pending_message = f"{enemy_name}'s attack on {target_name} missed!"
+                
+            self.pending_damage = 0
+    
+    def update_text_animation(self):
+        """
+        Update the text scrolling animation.
+        """
+        # Only update text if we haven't displayed the full message yet
+        if self.message_index < len(self.full_message):
+            self.text_timer += self.text_speed
+            
+            # Add characters one at a time but at a rate determined by text_speed
+            # This creates smoother scrolling while maintaining the same overall speed
+            while self.text_timer >= 4 and self.message_index < len(self.full_message):
+                self.text_timer -= 4
+                self.displayed_message += self.full_message[self.message_index]
+                self.message_index += 1
+    
+    def set_message(self, message):
+        """
+        Set a new battle message and reset text animation.
+        
+        Args:
+            message: The message to display
+        """
+        self.full_message = message
+        self.displayed_message = ""
+        self.message_index = 0
+        self.text_timer = 0
+        
+        # Always add message to log, even if it's the same as a previous one
+        self.message_log.append(message)
+        # Keep only the most recent messages
+        if len(self.message_log) > self.max_log_size:
+            self.message_log.pop(0)
+    
+    def _check_all_enemies_defeated(self):
+        """
+        Check if all enemies are defeated.
+        
+        Returns:
+            bool: True if all enemies are defeated, False otherwise
+        """
+        return all(enemy.is_defeated() for enemy in self.enemies)
+    
+    def _check_all_party_defeated(self):
+        """
+        Check if all party members are defeated.
+        
+        Returns:
+            bool: True if all party members are defeated, False otherwise
+        """
+        return all(character.is_defeated() for character in self.party.active_members)
+    
+    def _ensure_battle_flow_consistency(self):
+        """Helper method to ensure battle flow remains consistent."""
+        # Check for impossible states and fix them
+        if self.battle_over:
+            # If battle is over, ensure action processing is False
+            self.action_processing = False
+            return
+            
+        # Check if there are any valid combatants left
+        if not self.turn_order.turn_queue:
+            # Regenerate turn order
+            self.turn_order.generate_turn_order()
+            
+            # If still no valid combatants, end the battle
+            if not self.turn_order.turn_queue:
+                self.battle_over = True
+                
+                # Determine victory/defeat based on remaining characters
+                if self._check_all_enemies_defeated():
+                    self.victory = True
+                    self.set_message("Victory! All enemies defeated!")
+                elif self._check_all_party_defeated():
+                    self.victory = False
+                    self.set_message("Defeat! All party members have fallen!")
+                return
+            
+        # Check if the current character is defeated
+        current = self.turn_order.get_current()
+        if current and current.is_defeated():
+            # Advance to the next non-defeated combatant
+            self.turn_order.advance()
+            self.action_processing = False
+                    self.active_character.end_turn()
+                
+                # Advance to next combatant if battle is not over
+                if not self.battle_over:
+                    current_combatant = self.turn_order.advance()
+                    self.action_processing = False
+        
+        # Handle player spell casting animation
+        elif self.character_casting:
+            self.animation_timer += 1
+            if self.animation_timer >= self.spell_animation_duration:
+                self.character_casting = False
+                self.animation_timer = 0
+                
+                # Apply spell effect to target
+                if self.target:
+                    if self.pending_damage > 0:
+                        # Damage spell
+                        self.target.take_damage(self.pending_damage)
+                    elif self.pending_damage < 0:
+                        # Healing spell (negative damage)
+                        original_hp = self.target.hp
+                        self.target.hp = min(self.target.hp - self.pending_damage, self.target.max_hp)
+                        actual_healing = self.target.hp - original_hp
+                        
+                        # Update the message with actual healing amount
+                        self.pending_message = self.pending_message.replace("to restore HP", f"restoring {actual_healing} HP")
+                
+                # Display the spell message
+                self.set_message(self.pending_message)
+                
+                # Check if target was defeated (for damage spells)
+                if self.target and self.target.is_defeated():
+                    # Award XP to caster
+                    if hasattr(self.target, 'xp'):
+                        xp_gained = self.target.xp
+                        self.active_character.gain_experience(xp_gained)
+                        self.message_log.append(f"{self.active_character.name} gained {xp_gained} XP!")
+                    
+                    # Check if all enemies are defeated
+                    if self._check_all_enemies_defeated():
+                        self.victory = True
+                        self.battle_over = True
+                        self.set_message("Victory! All enemies defeated!")
+                        return
+                    else:
+                        # Remove the defeated enemy from turn order
+                        self.turn_order.remove_combatant(self.target)
+                
+                # End current character's turn
+                if self.active_character:
+                    self.active_character.end_turn()
+                
+                # Advance to next combatant if battle is not over
+                if not self.battle_over:
+                    current_combatant = self.turn_order.advance()
+                    self.action_processing = False
+        
+        # Handle player skill usage animation
+        elif self.character_using_skill:
+            self.animation_timer += 1
+            if self.animation_timer >= self.animation_duration:
+                self.character_using_skill = False
+                self.animation_timer = 0
+                
+                # Display the skill message
+                self.set_message(self.pending_message)
+                
+                # End current character's turn
+                if self.active_character:
+                    self.active_character.end_turn()
+                
+                # Advance to next combatant
+                current_combatant = self.turn_order.advance()
+                self.action_processing = False
+        
+        # Handle player ultimate usage animation
+        elif self.character_using_ultimate:
+            self.animation_timer += 1
+            if self.animation_timer >= self.animation_duration:
+                self.character_using_ultimate = False
+                self.animation_timer = 0
+                
+                # Apply ultimate effect to target
+                if self.target and self.pending_damage > 0:
+                    self.target.take_damage(self.pending_damage)
+                
+                # Display the ultimate message
+                self.set_message(self.pending_message)
+                
+                # Check if target was defeated
+                if self.target and self.target.is_defeated():
+                    # Award XP to character
+                    if hasattr(self.target, 'xp'):
+                        xp_gained = self.target.xp
+                        self.active_character.gain_experience(xp_gained)
+                        self.message_log.append(f"{self.active_character.name} gained {xp_gained} XP!")
+                    
+                    # Check if all enemies are defeated
+                    if self._check_all_enemies_defeated():
+                        self.victory = True
+                        self.battle_over = True
+                        self.set_message("Victory! All enemies defeated!")
+                        return
+                    else:
+                        # Remove the defeated enemy from turn order
+                        self.turn_order.remove_combatant(self.target)
+                
+                # End current character's turn
+                if self.active_character:
+                    self.active_character.end_turn()
+                
+                # Advance to next combatant if battle is not over
+                if not self.battle_over:
+                    current_combatant = self.turn_order.advance()
+                    self.action_processing = False
+        
+        # Handle enemy attack animation
+        elif self.enemy_attacking:
+            self.animation_timer += 1
+            if self.animation_timer >= self.animation_duration:
+                self.enemy_attacking = False
+                self.animation_timer = 0
+                
+                # Apply damage to target (only if attack didn't miss)
+                if "missed" not in self.pending_message and self.target and self.pending_damage > 0:
+                    # We pass the battle system and current enemy for potential passive triggers
+                    passive_triggered, passive_message = self.target.take_damage(
+                        self.pending_damage, 
+                        damage_type="physical", 
+                        attacker=self.current_enemy,
+                        battle_system=self
+                    )
+                    
+                    # Display the standard attack message first
+                    self.set_message(self.pending_message)
+                    
+                    # If a passive ability was triggered, store that info for display after the regular message
+                    if passive_triggered:
+                        self.counter_triggered = True
+                        self.counter_message = passive_message
+                else:
+                    # If the attack missed, just show the regular message
+                    self.set_message(self.pending_message)
+                    self.counter_triggered = False
+                
+                # Check if target was defeated
+                if self.target and self.target.is_defeated():
+                    # Check if all party members are defeated
+                    if self._check_all_party_defeated():
+                        self.battle_over = True
+                        self.victory = False
+                        self.set_message("Defeat! All party members have fallen!")
+                        return
+                    else:
+                        # Remove the defeated character from turn order
+                        self.turn_order.remove_combatant(self.target)
+                
+                # End current enemy's turn
+                if self.current_enemy:
+                    self.current_enemy.end_turn()
+                
+                # Advance to next combatant if battle is not over and no counter was triggered
+                if not self.battle_over and not self.counter_triggered:
+                    current_combatant = self.turn_order.advance()
+                    self.action_processing = False
+        
+        # Handle fleeing animation
+        elif self.character_fleeing:
+            self.animation_timer += 1
+            if self.animation_timer >= self.flee_animation_duration:
+                self.character_fleeing = False
+                self.animation_timer = 0
+                self.set_message(f"{self.active_character.name} fled from battle!")
+                self.battle_over = True
+                self.fled = True
+                self.action_processing = False
+        
+        # Handle delay for the defend action
+        elif self.character_defending:
+            self.action_delay += 1
+            if self.action_delay >= self.action_delay_duration:
+                self.action_delay = 0
+                self.character_defending = False
+                
+                # End current character's turn
+                if self.active_character:
+                    self.active_character.end_turn()
+                
+                # Advance to next combatant
+                current_combatant = self.turn_order.advance()
+                self.action_processing = False
+        
+        # Process enemy turn if it's enemy's turn and no animation is active
+        elif not self.is_player_turn() and not self.enemy_attacking and not self.action_processing:
+            self.process_enemy_turn()
+        
+        # Check if it's a player's turn but no action is being taken
+        elif self.is_player_turn() and not self.action_processing:
+            # Get the current character
+            current_character = self.get_current_character()
+            
+            # If character is defeated, move to next turn
+            if current_character and current_character.is_defeated():
+                current_combatant = self.turn_order.advance()
+        
+        # Ensure battle flow consistency
+        self._ensure_battle_flow_consistency()
     
     def process_enemy_turn(self):
         """Process the enemy's turn in battle."""
@@ -1111,14 +1583,13 @@ class BattleSystem:
                     
     def draw(self, screen):
         """
-        Draw the battle scene with all enemies.
+        Draw the battle scene with all characters and enemies.
         
         Args:
             screen: The pygame surface to draw on
         """
         # Import utils here to avoid circular imports
         from utils import scale_position, scale_dimensions
-        from systems.battle_ui_helpers import draw_enemy_name_tags, draw_enemy_health_bars, draw_turn_order_indicator
         
         # Get current screen dimensions
         current_width, current_height = screen.get_size()
@@ -1128,115 +1599,114 @@ class BattleSystem:
         from systems.battle_visualizer import draw_battle_background
         draw_battle_background(screen)
         
-        # Calculate animation offsets for player
-        player_offset_x = 0
-        
-        if self.player_attacking or self.player_countering:
-            # Move player toward active enemy during first half, then back
-            # Player moves left (-) toward enemy
-            animation_timer = self.animation_timer if self.player_attacking else self.counter_animation_timer
-            current_enemy = self.targeting_system.get_selected_target() if self.targeting_system.active else \
-                        (self.enemies[self.current_enemy_index] if self.current_enemy_index < len(self.enemies) else self.enemies[0])
-                        
-            target_offset = -20  # Base movement amount
-            
-            # Adjust movement direction based on enemy position
-            if current_enemy and current_enemy.rect.centerx > self.player.rect.centerx:
-                # Enemy is to the right, move right
-                movement_dir = 1
-            else:
-                # Enemy is to the left, move left
-                movement_dir = -1
+        # Draw all party members
+        for character in self.party.active_members:
+            if not character.is_defeated():
+                # Calculate animation offsets
+                offset_x = 0
+                offset_y = 0
                 
-            if animation_timer < self.animation_duration / 2:
-                player_offset_x = int(target_offset * movement_dir * (animation_timer / (self.animation_duration / 2)))
-            else:
-                player_offset_x = int(target_offset * movement_dir * (1 - (animation_timer - self.animation_duration / 2) / (self.animation_duration / 2)))
-        
-        elif self.player_fleeing:
-            # Move player off the right side of the screen
-            player_offset_x = int(300 * (self.animation_timer / self.flee_animation_duration))
-        
-        elif self.player_casting:
-            # For spell casting, add a subtle effect
-            if self.animation_timer < self.spell_animation_duration / 2:
-                player_offset_x = int(-10 * (self.animation_timer / (self.spell_animation_duration / 2)))
-            else:
-                player_offset_x = int(-10 * (1 - (self.animation_timer - self.spell_animation_duration / 2) / (self.spell_animation_duration / 2)))
-        
-        # Scale positions and dimensions
-        player_pos_scaled = scale_position(self.player_pos[0], self.player_pos[1], 
-                                        original_width, original_height, 
-                                        current_width, current_height)
-        
-        player_size = scale_dimensions(50, 75, original_width, original_height, 
-                                    current_width, current_height)
-        
-        # Scale offset values
-        player_offset_x = int(player_offset_x * (current_width / original_width))
-        
-        # Draw player unless player has fled
-        if not self.fled:
-            # Draw player character
-            pygame.draw.rect(screen, GREEN, 
-                            (player_pos_scaled[0] + player_offset_x, 
-                            player_pos_scaled[1], 
-                            player_size[0], player_size[1]))
+                if self.character_attacking and character == self.active_character:
+                    # Move character toward enemy during attack
+                    if self.animation_timer < self.animation_duration / 2:
+                        # Move toward target
+                        if hasattr(self.target, 'battle_pos_x'):
+                            # Direction vector
+                            dx = self.target.battle_pos_x - character.battle_pos_x
+                            move_dist = int(30 * (current_width / original_width))
+                            # Move in the direction of the target
+                            offset_x = int(move_dist * (dx / abs(dx) if dx != 0 else 0) * 
+                                         (self.animation_timer / (self.animation_duration / 2)))
+                    else:
+                        # Move back to position
+                        if hasattr(self.target, 'battle_pos_x'):
+                            dx = self.target.battle_pos_x - character.battle_pos_x
+                            move_dist = int(30 * (current_width / original_width))
+                            # Return from the direction of the target
+                            offset_x = int(move_dist * (dx / abs(dx) if dx != 0 else 0) * 
+                                         (1 - (self.animation_timer - self.animation_duration / 2) / 
+                                          (self.animation_duration / 2)))
+                
+                # Draw character with offset
+                pygame.draw.rect(screen, character.color,
+                                (character.rect.x + offset_x,
+                                 character.rect.y + offset_y,
+                                 character.rect.width,
+                                 character.rect.height))
+                                 
+                # Draw character name above them
+                name_font = pygame.font.SysFont('Arial', 14)
+                name_text = name_font.render(character.name, True, WHITE)
+                name_x = character.rect.centerx - name_text.get_width() // 2
+                name_y = character.rect.top - name_text.get_height() - 5
+                screen.blit(name_text, (name_x, name_y))
         
         # Draw all enemies
-        for i, enemy in enumerate(self.enemies):
-            if not enemy.is_defeated():  # Only draw active enemies
-                # Calculate animation offsets for current enemy
-                enemy_offset_x = 0
-                if self.enemy_attacking and self.current_enemy_index == i:
-                    # Only animate the currently attacking enemy
+        for enemy in self.enemies:
+            if not enemy.is_defeated():
+                # Calculate animation offsets
+                offset_x = 0
+                offset_y = 0
+                
+                if self.enemy_attacking and enemy == self.current_enemy:
+                    # Move enemy toward character during attack
                     if self.animation_timer < self.animation_duration / 2:
-                        # Move enemy toward player
-                        if enemy.rect.centerx < self.player.rect.centerx:
-                            # Enemy is to the left, move right
-                            enemy_offset_x = int(30 * (self.animation_timer / (self.animation_duration / 2)))
-                        else:
-                            # Enemy is to the right, move left
-                            enemy_offset_x = int(-30 * (self.animation_timer / (self.animation_duration / 2)))
+                        # Move toward target
+                        if hasattr(self.target, 'battle_pos_x'):
+                            # Direction vector
+                            dx = self.target.battle_pos_x - enemy.battle_pos_x
+                            move_dist = int(30 * (current_width / original_width))
+                            # Move in the direction of the target
+                            offset_x = int(move_dist * (dx / abs(dx) if dx != 0 else 0) * 
+                                         (self.animation_timer / (self.animation_duration / 2)))
                     else:
-                        # Move enemy back to original position
-                        if enemy.rect.centerx < self.player.rect.centerx:
-                            # Enemy is to the left, move left
-                            enemy_offset_x = int(30 * (1 - (self.animation_timer - self.animation_duration / 2) / (self.animation_duration / 2)))
-                        else:
-                            # Enemy is to the right, move right
-                            enemy_offset_x = int(-30 * (1 - (self.animation_timer - self.animation_duration / 2) / (self.animation_duration / 2)))
+                        # Move back to position
+                        if hasattr(self.target, 'battle_pos_x'):
+                            dx = self.target.battle_pos_x - enemy.battle_pos_x
+                            move_dist = int(30 * (current_width / original_width))
+                            # Return from the direction of the target
+                            offset_x = int(move_dist * (dx / abs(dx) if dx != 0 else 0) * 
+                                         (1 - (self.animation_timer - self.animation_duration / 2) / 
+                                          (self.animation_duration / 2)))
                 
                 # Draw enemy with offset
-                pygame.draw.rect(screen, enemy.color, 
-                            (enemy.rect.x + enemy_offset_x, 
-                                enemy.rect.y, 
-                                enemy.rect.width, enemy.rect.height))
+                pygame.draw.rect(screen, enemy.color,
+                                (enemy.rect.x + offset_x,
+                                 enemy.rect.y + offset_y,
+                                 enemy.rect.width,
+                                 enemy.rect.height))
         
         # Draw enemy names and health bars
+        from systems.battle_ui_helpers import draw_enemy_name_tags, draw_enemy_health_bars
         draw_enemy_name_tags(screen, self.enemies)
         draw_enemy_health_bars(screen, self.enemies)
-        
-        # Draw turn order indicator at the top of the screen
-        draw_turn_order_indicator(screen, self)
-        
-        # Draw any active battle effects
-        if hasattr(self, 'visualizer'):
-            self.visualizer.draw(screen)
         
         # Draw targeting system if active
         if self.in_targeting_mode:
             self.targeting_system.draw(screen)
         
+        # Draw turn order indicator
+        draw_turn_order_indicator(screen, self)
+        
+        # Draw party status
+        from systems.battle_ui_party import draw_party_status
+        # Create fonts for status display
+        font_size = scale_font_size(24, original_width, original_height, current_width, current_height)
+        small_font_size = scale_font_size(16, original_width, original_height, current_width, current_height)
+        font = pygame.font.SysFont('Arial', font_size)
+        small_font = pygame.font.SysFont('Arial', small_font_size)
+        
+        draw_party_status(screen, self.party, self.turn_order, font, small_font)
+        
         # Draw the battle UI
         self._draw_battle_ui(screen)
-        
+    
     def _draw_battle_ui(self, screen):
         """
-        Draw the battle UI elements with scaling support.
+        Draw the battle UI elements.
         
         Args:
-            screen: The Pygame surface to draw on
+            screen: The pygame surface to draw on
         """
         from utils import scale_position, scale_dimensions, scale_font_size
         
@@ -1252,9 +1722,6 @@ class BattleSystem:
         font = pygame.font.SysFont('Arial', font_size)
         small_font = pygame.font.SysFont('Arial', small_font_size)
         
-        # Draw only player stat window at the bottom of the screen
-        self._draw_player_stat_window(screen, font, small_font)
-        
         # Scale message box dimensions and position
         message_box_width = int(600 * (current_width / original_width))
         message_box_height = int((30 * len(self.message_log) + 20) * (current_height / original_height))
@@ -1268,8 +1735,8 @@ class BattleSystem:
             message_box_width, 
             message_box_height
         )
-        pygame.draw.rect(screen, BLACK, message_box_rect)
-        pygame.draw.rect(screen, WHITE, message_box_rect, max(1, int(2 * (current_width / original_width))))  # Scale border width
+        pygame.draw.rect(screen, (0, 0, 0, 200), message_box_rect)
+        pygame.draw.rect(screen, WHITE, message_box_rect, max(1, int(2 * (current_width / original_width))))
         
         # Scale text positions
         message_x = message_box_x + int(10 * (current_width / original_width))
@@ -1295,19 +1762,26 @@ class BattleSystem:
                 message_text = font.render(message, True, GRAY)  # Older messages in gray
                 screen.blit(message_text, (message_x, message_y))
         
-        # Draw battle options or spell/skill menu
-        if self.turn == 0 and not self.battle_over and not self.player_attacking and not self.enemy_attacking and not self.player_fleeing and not self.player_casting and not self.player_using_skill and not self.player_using_ultimate and self.action_delay == 0:
+        # Draw battle options or special menus
+        current_character = self.get_current_character()
+        
+        if (current_character and not self.battle_over and 
+            not self.character_attacking and not self.enemy_attacking and 
+            not self.character_fleeing and not self.character_casting and 
+            not self.character_using_skill and not self.character_using_ultimate and 
+            self.action_delay == 0):
+            
             # Only display UI when the text is fully displayed AND not currently processing an action
             if self.message_index >= len(self.full_message) and not self.action_processing:
                 if self.in_spell_menu:
-                    self._draw_spell_menu(screen, font, small_font)
+                    self._draw_spell_menu(screen, font, small_font, current_character)
                 elif self.in_skill_menu:
-                    self._draw_skill_menu(screen, font, small_font)
+                    self._draw_skill_menu(screen, font, small_font, current_character)
                 elif self.in_ultimate_menu:
-                    self._draw_ultimate_menu(screen, font, small_font)
+                    self._draw_ultimate_menu(screen, font, small_font, current_character)
                 else:
-                    self._draw_battle_options(screen, font)
-                    
+                    self._draw_battle_options(screen, font, current_character)
+        
         # Display continue message if battle is over
         if self.battle_over:
             # Only display the continue message when the text is fully displayed
@@ -1317,14 +1791,80 @@ class BattleSystem:
                 continue_y = int(500 * (current_height / original_height))
                 screen.blit(continue_text, (continue_x, continue_y))
     
-    def _draw_spell_menu(self, screen, font, small_font):
+    def _draw_battle_options(self, screen, font, character):
         """
-        Draw the spell selection menu with scaling support.
+        Draw the main battle options menu in a two-column layout.
+        
+        Args:
+            screen: The pygame surface to draw on
+            font: The font to use
+            character: The current character whose turn it is
+        """
+        from utils import scale_position, scale_dimensions
+        
+        # Get current screen dimensions
+        current_width, current_height = screen.get_size()
+        original_width, original_height = 800, 600  # Original design resolution
+        
+        # Scale dimensions and position
+        options_box_width, options_box_height = scale_dimensions(
+            300, 160, original_width, original_height, current_width, current_height
+        )
+        options_box_x, options_box_y = scale_position(
+            20, SCREEN_HEIGHT - 160 - 5, original_width, original_height, current_width, current_height
+        )
+        
+        # Draw box background and border
+        pygame.draw.rect(screen, (0, 0, 0, 200), (options_box_x, options_box_y, options_box_width, options_box_height))
+        border_width = max(1, int(2 * (current_width / original_width)))
+        pygame.draw.rect(screen, WHITE, (options_box_x, options_box_y, options_box_width, options_box_height), border_width)
+        
+        # Draw character name
+        char_text = font.render(f"{character.name}'s Turn", True, GREEN)
+        header_x = options_box_x + (options_box_width // 2) - (char_text.get_width() // 2)
+        header_y = options_box_y + int(10 * (current_height / original_height))
+        screen.blit(char_text, (header_x, header_y))
+        
+        # Scale text positions
+        left_column_x = options_box_x + int(30 * (current_width / original_width))
+        right_column_x = options_box_x + int(160 * (current_width / original_width))
+        option_y_base = options_box_y + int(40 * (current_height / original_height))
+        option_line_height = int(25 * (current_height / original_height))
+        
+        # Draw battle options in two columns
+        # Left column (first 4 options)
+        for i in range(4):
+            option_y = option_y_base + i * option_line_height
+            option = self.battle_options[i]
+            
+            if i == self.selected_option:
+                # Highlight selected option
+                option_text = font.render(f"> {option}", True, WHITE)
+            else:
+                option_text = font.render(f"  {option}", True, GRAY)
+            screen.blit(option_text, (left_column_x, option_y))
+        
+        # Right column (next 4 options)
+        for i in range(4, 8):
+            option_y = option_y_base + (i - 4) * option_line_height
+            option = self.battle_options[i]
+            
+            if i == self.selected_option:
+                # Highlight selected option
+                option_text = font.render(f"> {option}", True, WHITE)
+            else:
+                option_text = font.render(f"  {option}", True, GRAY)
+            screen.blit(option_text, (right_column_x, option_y))
+    
+    def _draw_spell_menu(self, screen, font, small_font, character):
+        """
+        Draw the spell selection menu.
         
         Args:
             screen: The pygame surface to draw on
             font: The main font to use
             small_font: The smaller font for details
+            character: The character casting spells
         """
         from utils import scale_position, scale_dimensions
         
@@ -1334,25 +1874,25 @@ class BattleSystem:
         
         # Scale menu dimensions and position
         spell_box_width, spell_box_height = scale_dimensions(
-            250, 150, original_width, original_height, current_width, current_height
+            250, 200, original_width, original_height, current_width, current_height
         )
         spell_box_x, spell_box_y = scale_position(
-            20, SCREEN_HEIGHT - 150 - 5, original_width, original_height, current_width, current_height
+            20, SCREEN_HEIGHT - 200 - 5, original_width, original_height, current_width, current_height
         )
         
         # Draw box background and border
-        pygame.draw.rect(screen, BLACK, (spell_box_x, spell_box_y, spell_box_width, spell_box_height))
+        pygame.draw.rect(screen, (0, 0, 0, 200), (spell_box_x, spell_box_y, spell_box_width, spell_box_height))
         border_width = max(1, int(2 * (current_width / original_width)))
         pygame.draw.rect(screen, PURPLE, (spell_box_x, spell_box_y, spell_box_width, spell_box_height), border_width)
         
         # Draw "Magic" header
-        magic_text = font.render("Magic", True, PURPLE)
+        magic_text = font.render(f"{character.name}'s Magic", True, PURPLE)
         header_x = spell_box_x + (spell_box_width // 2) - (magic_text.get_width() // 2)
         header_y = spell_box_y + int(10 * (current_height / original_height))
         screen.blit(magic_text, (header_x, header_y))
         
-        # Get spell list from player's spellbook
-        spell_names = self.player.spellbook.get_spell_names()
+        # Get spell list from character's spellbook
+        spell_names = character.spellbook.get_spell_names()
         # Add "BACK" option at the end
         options = spell_names + ["BACK"]
         
@@ -1375,10 +1915,10 @@ class BattleSystem:
                 screen.blit(option_text, (option_x, option_y))
             else:
                 # Get the spell data
-                spell = self.player.spellbook.get_spell(spell_name)
+                spell = character.spellbook.get_spell(spell_name)
                 
-                # Determine text color based on whether player has enough SP
-                has_sp = self.player.sp >= spell.sp_cost
+                # Determine text color based on whether character has enough SP
+                has_sp = character.sp >= spell.sp_cost
                 
                 if i == self.selected_spell_option:
                     # Selected spell
@@ -1404,20 +1944,21 @@ class BattleSystem:
         
         # Draw spell description for selected spell
         if self.selected_spell_option < len(spell_names):
-            spell = self.player.spellbook.get_spell(options[self.selected_spell_option])
+            spell = character.spellbook.get_spell(options[self.selected_spell_option])
             if spell:
-                desc_y = option_y_base + len(options) * option_line_height
+                desc_y = option_y_base + len(options) * option_line_height + int(10 * (current_height / original_height))
                 desc_text = small_font.render(spell.description, True, WHITE)
                 screen.blit(desc_text, (option_x, desc_y))
-                
-    def _draw_skill_menu(self, screen, font, small_font):
+    
+    def _draw_skill_menu(self, screen, font, small_font, character):
         """
-        Draw the skill selection menu with scaling support.
+        Draw the skill selection menu.
         
         Args:
             screen: The pygame surface to draw on
             font: The main font to use
             small_font: The smaller font for details
+            character: The character using skills
         """
         from utils import scale_position, scale_dimensions
         
@@ -1427,25 +1968,25 @@ class BattleSystem:
         
         # Scale menu dimensions and position
         skill_box_width, skill_box_height = scale_dimensions(
-            250, 150, original_width, original_height, current_width, current_height
+            250, 200, original_width, original_height, current_width, current_height
         )
         skill_box_x, skill_box_y = scale_position(
-            20, SCREEN_HEIGHT - 150 - 5, original_width, original_height, current_width, current_height
+            20, SCREEN_HEIGHT - 200 - 5, original_width, original_height, current_width, current_height
         )
         
         # Draw box background and border
-        pygame.draw.rect(screen, BLACK, (skill_box_x, skill_box_y, skill_box_width, skill_box_height))
+        pygame.draw.rect(screen, (0, 0, 0, 200), (skill_box_x, skill_box_y, skill_box_width, skill_box_height))
         border_width = max(1, int(2 * (current_width / original_width)))
         pygame.draw.rect(screen, YELLOW, (skill_box_x, skill_box_y, skill_box_width, skill_box_height), border_width)
         
         # Draw "Skills" header
-        skills_text = font.render("Skills", True, YELLOW)
+        skills_text = font.render(f"{character.name}'s Skills", True, YELLOW)
         header_x = skill_box_x + (skill_box_width // 2) - (skills_text.get_width() // 2)
         header_y = skill_box_y + int(10 * (current_height / original_height))
         screen.blit(skills_text, (header_x, header_y))
         
-        # Get skill list from player's skillset
-        skill_names = self.player.skillset.get_skill_names()
+        # Get skill list from character's skillset
+        skill_names = character.skillset.get_skill_names()
         # Add "BACK" option at the end
         options = skill_names + ["BACK"]
         
@@ -1468,15 +2009,15 @@ class BattleSystem:
                 screen.blit(option_text, (option_x, option_y))
             else:
                 # Get the skill data
-                skill = self.player.skillset.get_skill(skill_name)
+                skill = character.skillset.get_skill(skill_name)
                 
-                # Determine text color based on whether player has enough resources
+                # Determine text color based on whether character has enough resources
                 has_resources = True
-                if skill.cost_type == "sp" and self.player.sp < skill.sp_cost:
+                if skill.cost_type == "sp" and character.sp < skill.sp_cost:
                     has_resources = False
-                elif skill.cost_type == "hp" and self.player.hp <= skill.hp_cost:
+                elif skill.cost_type == "hp" and character.hp <= skill.hp_cost:
                     has_resources = False
-                elif skill.cost_type == "both" and (self.player.sp < skill.sp_cost or self.player.hp <= skill.hp_cost):
+                elif skill.cost_type == "both" and (character.sp < skill.sp_cost or character.hp <= skill.hp_cost):
                     has_resources = False
                 
                 if i == self.selected_skill_option:
@@ -1509,19 +2050,21 @@ class BattleSystem:
         
         # Draw skill description for selected skill
         if self.selected_skill_option < len(skill_names):
-            skill = self.player.skillset.get_skill(options[self.selected_skill_option])
+            skill = character.skillset.get_skill(options[self.selected_skill_option])
             if skill:
-                desc_y = option_y_base + len(options) * option_line_height
+                desc_y = option_y_base + len(options) * option_line_height + int(10 * (current_height / original_height))
                 desc_text = small_font.render(skill.description, True, WHITE)
                 screen.blit(desc_text, (option_x, desc_y))
     
-    def _draw_battle_options(self, screen, font):
+    def _draw_ultimate_menu(self, screen, font, small_font, character):
         """
-        Draw the main battle options menu in a two-column layout.
+        Draw the ultimate ability selection menu.
         
         Args:
             screen: The pygame surface to draw on
-            font: The font to use
+            font: The main font to use
+            small_font: The smaller font for details
+            character: The character using ultimates
         """
         from utils import scale_position, scale_dimensions
         
@@ -1529,55 +2072,84 @@ class BattleSystem:
         current_width, current_height = screen.get_size()
         original_width, original_height = 800, 600  # Original design resolution
         
-        # Scale dimensions and position
-        options_box_width, options_box_height = scale_dimensions(
-            300, 160, original_width, original_height, current_width, current_height
+        # Scale menu dimensions and position
+        ultimate_box_width, ultimate_box_height = scale_dimensions(
+            250, 200, original_width, original_height, current_width, current_height
         )
-        options_box_x, options_box_y = scale_position(
-            20, SCREEN_HEIGHT - 160 - 5, original_width, original_height, current_width, current_height
+        ultimate_box_x, ultimate_box_y = scale_position(
+            20, SCREEN_HEIGHT - 200 - 5, original_width, original_height, current_width, current_height
         )
         
         # Draw box background and border
-        pygame.draw.rect(screen, BLACK, (options_box_x, options_box_y, options_box_width, options_box_height))
+        pygame.draw.rect(screen, (0, 0, 0, 200), (ultimate_box_x, ultimate_box_y, ultimate_box_width, ultimate_box_height))
         border_width = max(1, int(2 * (current_width / original_width)))
-        pygame.draw.rect(screen, WHITE, (options_box_x, options_box_y, options_box_width, options_box_height), border_width)
+        pygame.draw.rect(screen, RED, (ultimate_box_x, ultimate_box_y, ultimate_box_width, ultimate_box_height), border_width)
         
-        # Draw "Actions" header
-        actions_text = font.render("Actions", True, WHITE)
-        header_x = options_box_x + (options_box_width // 2) - (actions_text.get_width() // 2)
-        header_y = options_box_y + int(10 * (current_height / original_height))
-        screen.blit(actions_text, (header_x, header_y))
+        # Draw "Ultimate" header
+        ultimate_text = font.render(f"{character.name}'s Ultimates", True, RED)
+        header_x = ultimate_box_x + (ultimate_box_width // 2) - (ultimate_text.get_width() // 2)
+        header_y = ultimate_box_y + int(10 * (current_height / original_height))
+        screen.blit(ultimate_text, (header_x, header_y))
+        
+        # Get ultimate list from character's ultimates
+        ultimate_names = character.ultimates.get_ultimate_names()
+        # Add "BACK" option at the end
+        options = ultimate_names + ["BACK"]
         
         # Scale text positions
-        left_column_x = options_box_x + int(30 * (current_width / original_width))
-        right_column_x = options_box_x + int(160 * (current_width / original_width))
-        option_y_base = options_box_y + int(40 * (current_height / original_height))
+        option_x = ultimate_box_x + int(30 * (current_width / original_width))
+        option_y_base = ultimate_box_y + int(40 * (current_height / original_height))
         option_line_height = int(25 * (current_height / original_height))
+        status_x = ultimate_box_x + int(150 * (current_width / original_width))
         
-        # Draw battle options in two columns
-        # Left column (first 4 options)
-        for i in range(4):
+        # Draw each ultimate with availability status
+        for i, ultimate_name in enumerate(options):
             option_y = option_y_base + i * option_line_height
-            option = self.battle_options[i]
             
-            if i == self.selected_option:
-                # Highlight selected option
-                option_text = font.render(f"> {option}", True, WHITE)
+            if ultimate_name == "BACK":
+                # Draw BACK option
+                if i == self.selected_ultimate_option:
+                    option_text = font.render(f"> {ultimate_name}", True, WHITE)
+                else:
+                    option_text = font.render(f"  {ultimate_name}", True, GRAY)
+                screen.blit(option_text, (option_x, option_y))
             else:
-                option_text = font.render(f"  {option}", True, GRAY)
-            screen.blit(option_text, (left_column_x, option_y))
+                # Get the ultimate data
+                ultimate = character.ultimates.get_ultimate(ultimate_name)
+                
+                # Determine text color based on whether ultimate is available
+                is_available = ultimate.available
+                
+                if i == self.selected_ultimate_option:
+                    # Selected ultimate
+                    if is_available:
+                        name_color = WHITE  # Can use
+                    else:
+                        name_color = RED    # Can't use (already used)
+                    option_text = font.render(f"> {ultimate_name}", True, name_color)
+                else:
+                    # Unselected ultimate
+                    if is_available:
+                        name_color = GRAY   # Can use
+                    else:
+                        name_color = RED    # Can't use (already used)
+                    option_text = font.render(f"  {ultimate_name}", True, name_color)
+                
+                # Draw ultimate name
+                screen.blit(option_text, (option_x, option_y))
+                
+                # Draw availability status
+                status_text = small_font.render("READY" if is_available else "USED", True, 
+                                            GREEN if is_available else RED)
+                screen.blit(status_text, (status_x, option_y))
         
-        # Right column (next 4 options)
-        for i in range(4, 8):
-            option_y = option_y_base + (i - 4) * option_line_height
-            option = self.battle_options[i]
-            
-            if i == self.selected_option:
-                # Highlight selected option
-                option_text = font.render(f"> {option}", True, WHITE)
-            else:
-                option_text = font.render(f"  {option}", True, GRAY)
-            screen.blit(option_text, (right_column_x, option_y))
+        # Draw ultimate description for selected ultimate
+        if self.selected_ultimate_option < len(ultimate_names):
+            ultimate = character.ultimates.get_ultimate(options[self.selected_ultimate_option])
+            if ultimate:
+                desc_y = option_y_base + len(options) * option_line_height + int(10 * (current_height / original_height))
+                desc_text = small_font.render(ultimate.description, True, WHITE)
+                screen.blit(desc_text, (option_x, desc_y))
                 
     def _draw_player_stat_window(self, screen, font, small_font):
         """
