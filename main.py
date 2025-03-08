@@ -698,10 +698,6 @@ def main():
     # Initialize Pygame
     pygame.init()
 
-    # Initialize party with default character
-    party, player_name = initialize_party()
-    player = party.leader
-    
     # Initialize settings manager
     settings_manager = SettingsManager()
     

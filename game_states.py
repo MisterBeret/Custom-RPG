@@ -1,7 +1,7 @@
 """
 Game state management for the RPG game.
 """
-from constants import WORLD_MAP, BATTLE, PAUSE, SETTINGS, INVENTORY, DIALOGUE
+from constants import WORLD_MAP, BATTLE, PAUSE, SETTINGS, INVENTORY, DIALOGUE, PARTY_MANAGEMENT
 
 class GameStateManager:
     """

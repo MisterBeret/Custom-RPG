@@ -20,6 +20,8 @@ class PartyManagementUI:
     MANAGE_PARTY = 4
     SELECT_CLASS = 5
     NAME_INPUT = 6
+    SELECT_CHARACTER = 7  # For selecting characters from a list
+    REMOVE_CHARACTER = 8  # For confirming character removal
     
     def __init__(self, party, character_creator):
         """
@@ -80,6 +82,10 @@ class PartyManagementUI:
                 return self._handle_select_class_input(event)
             elif self.current_state == self.NAME_INPUT:
                 return self._handle_name_input(event)
+            elif self.current_state == self.SELECT_CHARACTER:
+                return self._handle_select_character_input(event)
+            elif self.current_state == self.REMOVE_CHARACTER:
+                return self._handle_remove_character_input(event)
                 
         return False
     
@@ -87,6 +93,25 @@ class PartyManagementUI:
         """Handle input for the main menu state."""
         if event.key == pygame.K_UP:
             self.selected_option = (self.selected_option - 1) % len(self.main_menu_options)
+        elif event.key == pygame.K_DOWN:
+            self.selected_option = (self.selected_option + 1) % len(self.main_menu_options)
+        elif event.key == pygame.K_RETURN:
+            if self.selected_option == 0:  # Create Character
+                self.current_state = self.CREATE_CHARACTER
+                self.selected_option = 0
+                self.selected_class_id = self.class_options[0]
+                self.temp_name = "New Character"
+                self.message = "Select a character class"
+            elif self.selected_option == 1:  # View Party
+                self.current_state = self.VIEW_PARTY
+                self.selected_option = 0
+                self.message = "Party Members"
+            elif self.selected_option == 2:  # Manage Party
+                self.current_state = self.MANAGE_PARTY
+                self.selected_option = 0
+                self.message = "Select a management option"
+            elif self.selected_option == 3:  # Exit
+                return True  # Signal to close the UI
         elif event.key == pygame.K_ESCAPE:
             return True  # Exit the UI
             
@@ -114,6 +139,74 @@ class PartyManagementUI:
             idx = self.class_options.index(self.selected_class_id)
             idx = (idx + 1) % len(self.class_options)
             self.selected_class_id = self.class_options[idx]
+            
+        return False
+    
+    def _handle_select_character_input(self, event):
+        """Handle input for the character selection state."""
+        members = self.party.get_all_members()
+        
+        if event.key == pygame.K_ESCAPE:
+            self.current_state = self.back_state
+            self.selected_option = 0
+            self.message = ""
+        elif event.key == pygame.K_UP:
+            self.selected_option = (self.selected_option - 1) % len(members)
+        elif event.key == pygame.K_DOWN:
+            self.selected_option = (self.selected_option + 1) % len(members)
+        elif event.key == pygame.K_RETURN:
+            # Select the character
+            if 0 <= self.selected_option < len(members):
+                self.selected_character = members[self.selected_option]
+                
+                if self.back_state == self.EDIT_CHARACTER:
+                    # Go to edit character screen
+                    self.current_state = self.EDIT_CHARACTER
+                    self.selected_option = 0
+                    self.message = f"Editing {self.selected_character.name}"
+                elif self.back_state == self.REMOVE_CHARACTER:
+                    # Go to removal confirmation
+                    self.current_state = self.REMOVE_CHARACTER
+                    self.selected_option = 1  # Default to "No"
+                    self.message = f"Remove {self.selected_character.name} from party?"
+                elif self.back_state == self.MANAGE_PARTY:
+                    # Change leader
+                    if self.selected_character in self.party.active_members:
+                        idx = self.party.active_members.index(self.selected_character)
+                        if self.party.set_leader(idx):
+                            self.message = f"{self.selected_character.name} is now the party leader!"
+                        else:
+                            self.message = "Failed to set new leader!"
+                    else:
+                        self.message = "Leader must be an active party member!"
+                        
+                    # Return to manage party screen
+                    self.current_state = self.MANAGE_PARTY
+                    self.selected_option = 0
+            
+        return False
+        
+    def _handle_remove_character_input(self, event):
+        """Handle input for the character removal confirmation state."""
+        if event.key == pygame.K_ESCAPE:
+            self.current_state = self.MANAGE_PARTY
+            self.selected_option = 0
+            self.message = ""
+        elif event.key == pygame.K_LEFT or event.key == pygame.K_RIGHT:
+            # Toggle between Yes/No
+            self.selected_option = 1 - self.selected_option
+        elif event.key == pygame.K_RETURN:
+            if self.selected_option == 0:  # Yes
+                # Remove the character
+                if self.selected_character:
+                    if self.party.remove_member(self.selected_character):
+                        self.message = f"{self.selected_character.name} removed from party!"
+                    else:
+                        self.message = "Failed to remove character!"
+                
+            # Return to manage party screen
+            self.current_state = self.MANAGE_PARTY
+            self.selected_option = 0
             
         return False
         
@@ -340,6 +433,10 @@ class PartyManagementUI:
             self._draw_edit_character(screen, font, small_font, current_width, current_height)
         elif self.current_state == self.NAME_INPUT:
             self._draw_name_input(screen, font, current_width, current_height)
+        elif self.current_state == self.SELECT_CHARACTER:
+            self._draw_select_character(screen, font, small_font, current_width, current_height)
+        elif self.current_state == self.REMOVE_CHARACTER:
+            self._draw_remove_character(screen, font, small_font, current_width, current_height)
             
     def _draw_main_menu(self, screen, font, current_width, current_height):
         """Draw the main menu UI."""
@@ -499,7 +596,41 @@ class PartyManagementUI:
             option_x = (current_width - option_text.get_width()) // 2
             option_y = option_y_base + i * option_spacing
             screen.blit(option_text, (option_x, option_y))
+    
+    def _draw_select_character(self, screen, font, small_font, current_width, current_height):
+        """Draw the character selection UI."""
+        # Get the list of members
+        members = self.party.get_all_members()
+        
+        option_y_base = int(150 * (current_height / ORIGINAL_HEIGHT))
+        option_spacing = int(40 * (current_height / ORIGINAL_HEIGHT))
+        
+        for i, member in enumerate(members):
+            # Highlight leader and selected character
+            is_leader = (member == self.party.leader)
+            is_selected = (i == self.selected_option)
             
+            leader_mark = " (Leader)" if is_leader else ""
+            prefix = "> " if is_selected else "  "
+            
+            member_text = f"{prefix}{member.name}{leader_mark} - Level {member.level} {member.character_class.name}"
+            
+            if is_selected:
+                member_surface = font.render(member_text, True, WHITE)
+            else:
+                member_surface = font.render(member_text, True, GRAY)
+                
+            member_x = (current_width - member_surface.get_width()) // 2
+            member_y = option_y_base + i * option_spacing
+            screen.blit(member_surface, (member_x, member_y))
+            
+        # Draw back instruction
+        back_y = int(450 * (current_height / ORIGINAL_HEIGHT))
+        back_text = "Press ESC to go back"
+        back_surface = small_font.render(back_text, True, GRAY)
+        back_x = (current_width - back_surface.get_width()) // 2
+        screen.blit(back_surface, (back_x, back_y))
+        
     def _draw_select_class(self, screen, font, small_font, current_width, current_height):
         """Draw the class selection UI."""
         option_y_base = int(150 * (current_height / ORIGINAL_HEIGHT))
@@ -617,23 +748,43 @@ class PartyManagementUI:
         instr_text = "Press ENTER to confirm or ESC to cancel"
         instr_surface = font.render(instr_text, True, WHITE)
         instr_x = (current_width - instr_surface.get_width()) // 2
-        screen.blit(instr_surface, (instr_x, instr_y))DOWN:
-            self.selected_option = (self.selected_option + 1) % len(self.main_menu_options)
-        elif event.key == pygame.K_RETURN:
-            if self.selected_option == 0:  # Create Character
-                self.current_state = self.CREATE_CHARACTER
-                self.selected_option = 0
-                self.selected_class_id = self.class_options[0]
-                self.temp_name = "New Character"
-                self.message = "Select a character class"
-            elif self.selected_option == 1:  # View Party
-                self.current_state = self.VIEW_PARTY
-                self.selected_option = 0
-                self.message = "Party Members"
-            elif self.selected_option == 2:  # Manage Party
-                self.current_state = self.MANAGE_PARTY
-                self.selected_option = 0
-                self.message = "Select a management option"
-            elif self.selected_option == 3:  # Exit
-                return True  # Signal to close the UI
-        elif event.key == pygame.K_
+        screen.blit(instr_surface, (instr_x, instr_y))
+        
+    def _draw_remove_character(self, screen, font, small_font, current_width, current_height):
+        """Draw the character removal confirmation UI."""
+        if not self.selected_character:
+            # Should not happen, but handle it gracefully
+            error_text = "No character selected!"
+            error_surface = font.render(error_text, True, RED)
+            error_x = (current_width - error_surface.get_width()) // 2
+            error_y = int(150 * (current_height / ORIGINAL_HEIGHT))
+            screen.blit(error_surface, (error_x, error_y))
+            return
+            
+        # Draw character info
+        char_y = int(150 * (current_height / ORIGINAL_HEIGHT))
+        char_text = f"Remove {self.selected_character.name} from party?"
+        char_surface = font.render(char_text, True, WHITE)
+        char_x = (current_width - char_surface.get_width()) // 2
+        screen.blit(char_surface, (char_x, char_y))
+        
+        # Draw yes/no options
+        option_y = int(250 * (current_height / ORIGINAL_HEIGHT))
+        option_spacing = int(200 * (current_width / ORIGINAL_WIDTH))
+        options = ["Yes", "No"]
+        
+        for i, option in enumerate(options):
+            is_selected = (i == self.selected_option)
+            
+            # Position options side by side
+            option_x = (current_width // 2) - (option_spacing // 2) + i * option_spacing - int(50 * (current_width / ORIGINAL_WIDTH))
+            
+            if is_selected:
+                # Highlight selected option
+                option_text = font.render(f"[{option}]", True, i == 0 and RED or GREEN)
+            else:
+                option_text = font.render(f" {option} ", True, GRAY)
+                
+            # Center the text at the option position
+            option_x = option_x - option_text.get_width() // 2
+            screen.blit(option_text, (option_x, option_y))

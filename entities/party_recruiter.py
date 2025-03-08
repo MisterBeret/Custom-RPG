@@ -6,6 +6,7 @@ from entities.npc import NPC
 from constants import WHITE
 from systems.party_ui import PartyManagementUI
 from systems.character_creator import CharacterCreator
+from systems.party_system import Party
 
 class PartyRecruiter(NPC):
     """
@@ -16,32 +17,6 @@ class PartyRecruiter(NPC):
         Initialize the party recruiter.
         
         Args:
-            event: Pygame event to process
-            
-        Returns:
-            bool: True if party UI should be closed
-        """
-        if not self.show_party_ui or not event:
-            return False
-            
-        # Pass event to the party UI
-        close_ui = self.ui.handle_input(event)
-        
-        if close_ui:
-            self.show_party_ui = False
-            return True
-            
-        return False
-        
-    def draw_ui(self, screen):
-        """
-        Draw the party management UI.
-        
-        Args:
-            screen: The pygame surface to draw on
-        """
-        if self.show_party_ui:
-            self.ui.draw(screen)
             x (int): Initial x coordinate
             y (int): Initial y coordinate
             width (int): Entity width
@@ -59,9 +34,12 @@ class PartyRecruiter(NPC):
         
         super().__init__(x, y, width, height, color, "Party Recruiter", dialogue)
         
-        self.party = party
-        self.character_creator = CharacterCreator(party)
-        self.ui = PartyManagementUI(party, self.character_creator)
+        # Create a new party if None was provided
+        self.party = party if party is not None else Party()
+        
+        # Create the character creator and UI with the party (either provided or new)
+        self.character_creator = CharacterCreator(self.party)
+        self.ui = PartyManagementUI(self.party, self.character_creator)
         self.show_party_ui = False
         
     def interact(self, dialogue_system):
@@ -98,3 +76,29 @@ class PartyRecruiter(NPC):
         Update the recruiter and handle party UI events.
         
         Args:
+            event: Pygame event to process
+            
+        Returns:
+            bool: True if party UI should be closed
+        """
+        if not self.show_party_ui or not event:
+            return False
+            
+        # Pass event to the party UI
+        close_ui = self.ui.handle_input(event)
+        
+        if close_ui:
+            self.show_party_ui = False
+            return True
+            
+        return False
+        
+    def draw_ui(self, screen):
+        """
+        Draw the party management UI.
+        
+        Args:
+            screen: The pygame surface to draw on
+        """
+        if self.show_party_ui:
+            self.ui.draw(screen)

@@ -14,7 +14,7 @@ from constants import (BLACK, WHITE, GREEN, RED, GRAY, SCREEN_WIDTH, SCREEN_HEIG
                       BATTLE_OPTIONS, MAX_LOG_SIZE, ORIGINAL_WIDTH, ORIGINAL_HEIGHT,
                       ORANGE, BLUE, DARK_BLUE, PURPLE, YELLOW)
 from systems.battle_formation import BattleFormation
-from systems.targeting_system_updated import EnhancedTargetingSystem
+from systems.targeting_system import TargetingSystem
 from systems.turn_order import TurnOrder
 from systems.battle_ui_party import draw_party_status, draw_turn_order_indicator
 from entities.player import Player
@@ -51,8 +51,8 @@ class BattleSystem:
         # Action processing flag
         self.action_processing = False
         
-        # Create enhanced targeting system
-        self.targeting_system = EnhancedTargetingSystem(party, self.enemies)
+        # Create targeting system
+        self.targeting_system = TargetingSystem(party, self.enemies)
         self.in_targeting_mode = False
         
         # Set up turn order
@@ -136,6 +136,10 @@ class BattleSystem:
         self.pending_damage = 0
         self.pending_message = ""
         self.target = None
+        
+        # For tracking enemy turns
+        self.current_enemy_index = 0
+        self.enemy_turn_processed = False
 
     def get_current_character(self):
         """
@@ -351,7 +355,7 @@ class BattleSystem:
             # In multi-enemy battles, enter targeting mode
             if len(self.enemies) > 1:
                 self.in_targeting_mode = True
-                self.targeting_system.start_targeting(character, EnhancedTargetingSystem.ENEMIES)
+                self.targeting_system.start_targeting(character, TargetingSystem.ENEMIES)  
                 self.set_message(f"{character.name} is targeting an enemy")
                 self.action_processing = False  # Allow targeting input
             else:
@@ -443,7 +447,7 @@ class BattleSystem:
                 self.targeting_system.switch_target_group()
                 
                 # Update message based on target group
-                if self.targeting_system.target_group == EnhancedTargetingSystem.ENEMIES:
+                if self.targeting_system.target_group == TargetingSystem.ENEMIES:  
                     self.set_message(f"{self.active_character.name} is targeting an enemy")
                 else:
                     self.set_message(f"{self.active_character.name} is targeting an ally")
@@ -527,13 +531,13 @@ class BattleSystem:
                     if spell.effect_type == "damage":
                         # Enter targeting mode
                         self.in_targeting_mode = True
-                        self.targeting_system.start_targeting(character, EnhancedTargetingSystem.ENEMIES)
+                        self.targeting_system.start_targeting(character, TargetingSystem.ENEMIES)  
                         self.current_spell = spell
                         self.set_message(f"Select a target for {spell.name}")
                     elif spell.effect_type == "healing":
                         # Enter targeting mode for allies
                         self.in_targeting_mode = True
-                        self.targeting_system.start_targeting(character, EnhancedTargetingSystem.ALLIES)
+                        self.targeting_system.start_targeting(character, TargetingSystem.ALLIES)  
                         self.current_spell = spell
                         self.set_message(f"Select a target for {spell.name}")
                     else:
@@ -587,7 +591,7 @@ class BattleSystem:
                     if skill.effect_type == "analyze":
                         # Enter targeting mode for enemies
                         self.in_targeting_mode = True
-                        self.targeting_system.start_targeting(character, EnhancedTargetingSystem.ENEMIES)
+                        self.targeting_system.start_targeting(character, TargetingSystem.ALLIES)
                         self.current_skill = skill
                         self.set_message(f"Select a target for {skill.name}")
                     else:
@@ -635,7 +639,7 @@ class BattleSystem:
                     if ultimate.effect_type == "damage":
                         # Enter targeting mode
                         self.in_targeting_mode = True
-                        self.targeting_system.start_targeting(character, EnhancedTargetingSystem.ENEMIES)
+                        self.targeting_system.start_targeting(character, TargetingSystem.ALLIES)
                         self.current_ultimate = ultimate
                         self.set_message(f"Select a target for {ultimate.name}")
                     else:
@@ -1308,12 +1312,11 @@ class BattleSystem:
             # Advance to the next non-defeated combatant
             self.turn_order.advance()
             self.action_processing = False
-                    self.active_character.end_turn()
                 
-                # Advance to next combatant if battle is not over
-                if not self.battle_over:
-                    current_combatant = self.turn_order.advance()
-                    self.action_processing = False
+        # Advance to next combatant if battle is not over
+        if not self.battle_over:
+            current_combatant = self.turn_order.advance()
+            self.action_processing = False
         
         # Handle player spell casting animation
         elif self.character_casting:

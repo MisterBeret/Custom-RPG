@@ -12,7 +12,7 @@ def initialize_party():
     Initialize the party with a default character.
     
     Returns:
-        tuple: (Party, Player) - The party and the leader player
+        tuple: (Party, str) - The party and the leader's name
     """
     # Create the party
     party = Party()
@@ -23,7 +23,7 @@ def initialize_party():
     # Create initial character with commoner class
     initial_character = creator.create_character("Hero", "commoner", 1, True)
     
-    # Return the party and the leader character
+    # Return the party and the leader character's name
     return party, initial_character.name
 
 def create_party_recruiter(party, x, y, current_width, current_height):

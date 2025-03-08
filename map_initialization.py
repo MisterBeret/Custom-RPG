@@ -60,26 +60,11 @@ def initialize_maps(player, party=None):
     # Position NPC in the top center area
     npc_x = ORIGINAL_WIDTH * 0.5
     npc_y = ORIGINAL_HEIGHT * 0.3
-
-    if party:
-        # Create a party recruiter instead of regular NPC
-        recruiter = PartyRecruiter(npc_x, npc_y, 32, 48, WHITE, party)
-        recruiter.update_scale(current_width, current_height)
-        north_map.add_entity(recruiter)
-    else:
-        # Create regular NPC if no party is provided
-        test_dialogue = [
-            "This is sample text!",
-            "I've heard there are more monsters around these days.",
-            "Be careful, sometimes you'll encounter multiple enemies at once!",
-            "The east area is particularly dangerous with all those rats..."
-        ]
-        test_npc = NPC(npc_x, npc_y, 32, 48, WHITE, "Test NPC", test_dialogue)
-        test_npc.update_scale(current_width, current_height)
-        north_map.add_entity(test_npc)
-
-    # Add NPC to north map
-    north_map.add_entity(test_npc)
+    
+    # Always create a party recruiter, even if party is None
+    recruiter = PartyRecruiter(npc_x, npc_y, 32, 48, WHITE, party)
+    recruiter.update_scale(current_width, current_height)
+    north_map.add_entity(recruiter)
     
     # Add player to center map
     center_map.add_entity(player)
