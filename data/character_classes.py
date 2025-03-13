@@ -1,7 +1,7 @@
 """
 Data for all character classes
 """
-from systems.class_system import CharacterClass
+from systems.character.class_system import CharacterClass
 
 #------------------------------------------------------------------------------------------------------------------------------------
 

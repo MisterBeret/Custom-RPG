@@ -3,7 +3,7 @@ Dialogue system for the RPG game.
 """
 import pygame
 from constants import SCREEN_WIDTH, SCREEN_HEIGHT, ORIGINAL_WIDTH, ORIGINAL_HEIGHT, BLACK, WHITE
-from utils import scale_position, scale_dimensions, scale_font_size
+from utils.utils import scale_position, scale_dimensions, scale_font_size
 
 class DialogueSystem:
     """

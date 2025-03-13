@@ -3,10 +3,10 @@ Character creation system for the RPG game.
 """
 from entities.player import Player
 from data.character_classes import commoner, warrior, mage  # Import available classes
-from systems.spell_system import SpellBook
-from systems.skill_system import SkillSet
-from systems.ultimate_system import UltimateSet
-from systems.passive_system import PassiveSet
+from systems.abilities.spell_system import SpellBook
+from systems.abilities.skill_system import SkillSet
+from systems.abilities.ultimate_system import UltimateSet
+from systems.abilities.passive_system import PassiveSet
 
 class CharacterCreator:
     """

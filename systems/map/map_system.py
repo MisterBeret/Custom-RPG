@@ -4,9 +4,9 @@ Map system for RPG game.
 import pygame
 import random
 from constants import SCREEN_WIDTH, SCREEN_HEIGHT, ORIGINAL_WIDTH, ORIGINAL_HEIGHT, WHITE
-from utils import scale_position, scale_dimensions, scale_font_size
+from utils.utils import scale_position, scale_dimensions, scale_font_size
 from entities.enemy import Enemy
-from systems.encounter_system import EncounterManager
+from systems.map.encounter_system import EncounterManager
 
 class MapArea:
     """

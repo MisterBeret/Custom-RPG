@@ -4,12 +4,12 @@ Player class for the RPG game.
 import pygame
 from entities.entity import Entity
 from constants import GREEN, SCREEN_WIDTH, SCREEN_HEIGHT, ORIGINAL_WIDTH, ORIGINAL_HEIGHT
-from systems.inventory import Inventory
-from systems.spell_system import SpellBook
-from systems.skill_system import SkillSet
-from systems.ultimate_system import UltimateSet
-from systems.passive_system import PassiveSet
-from utils import scale_position, scale_dimensions
+from systems.inventory.inventory import Inventory
+from systems.abilities.spell_system import SpellBook
+from systems.abilities.skill_system import SkillSet
+from systems.abilities.ultimate_system import UltimateSet
+from systems.abilities.passive_system import PassiveSet
+from utils.utils import scale_position, scale_dimensions
 
 class Player(Entity):
     """
@@ -54,7 +54,7 @@ class Player(Entity):
         self.defending = False
         
         # Character-specific inventory
-        from systems.character_inventory import CharacterInventory
+        from systems.character.character_inventory import CharacterInventory
         self.inventory = CharacterInventory(name)
         
         if character_class:
@@ -321,7 +321,7 @@ class Player(Entity):
         # Apply the spell effect based on type
         if spell.effect_type == "damage" and target:
             # Calculate magic damage using INT and spell power
-            from systems.battle_system import BattleSystem
+            from systems.battle.battle_system import BattleSystem
             battle_system = BattleSystem(self, target, "FAST")  # Temporary instance just for calculation
             damage = battle_system.calculate_magic_damage(self, target, spell.base_power)
             
@@ -490,7 +490,7 @@ class Player(Entity):
         Returns:
             tuple: (bool, str) - Success flag and result message
         """
-        from systems.inventory import get_item_effect
+        from systems.inventory.inventory import get_item_effect
         
         # Check if we have the item
         if not self.inventory.use_item(item_name):

@@ -3,7 +3,7 @@ Party system for the RPG game.
 """
 from typing import List, Optional
 from entities.player import Player
-from systems.character_inventory import PartyStorage
+from systems.character.character_inventory import PartyStorage
 
 class Party:
     """

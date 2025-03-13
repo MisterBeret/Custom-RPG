@@ -1,7 +1,7 @@
 """
 Map initialization for the RPG game.
 """
-from systems.map_system import MapSystem, MapArea
+from systems.map.map_system import MapSystem, MapArea
 from entities.enemy import Enemy
 from entities.npc import NPC
 from entities.party_recruiter import PartyRecruiter

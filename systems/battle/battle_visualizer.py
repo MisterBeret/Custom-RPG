@@ -6,9 +6,8 @@ import pygame
 import random
 import sys
 import os
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from constants import (BLACK, WHITE, GREEN, RED, BLUE, PURPLE, YELLOW, 
-                      ORIGINAL_WIDTH, ORIGINAL_HEIGHT)
+                     ORIGINAL_WIDTH, ORIGINAL_HEIGHT)
 
 def draw_battle_background(screen):
     """

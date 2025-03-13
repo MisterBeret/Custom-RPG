@@ -4,7 +4,7 @@ NPC class.
 import pygame
 from entities.entity import Entity
 from constants import WHITE, SCREEN_WIDTH, SCREEN_HEIGHT, ORIGINAL_WIDTH, ORIGINAL_HEIGHT
-from utils import scale_position, scale_dimensions
+from utils.utils import scale_position, scale_dimensions
 
 class NPC(Entity):
     """

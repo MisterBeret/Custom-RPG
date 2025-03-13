@@ -4,9 +4,9 @@ Party recruiter NPC for managing the player's party.
 import pygame
 from entities.npc import NPC
 from constants import WHITE
-from systems.party_ui import PartyManagementUI
-from systems.character_creator import CharacterCreator
-from systems.party_system import Party
+from systems.ui.party_ui import PartyManagementUI
+from systems.character.character_creator import CharacterCreator
+from systems.character.party_system import Party
 
 class PartyRecruiter(NPC):
     """

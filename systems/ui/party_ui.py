@@ -4,8 +4,8 @@ Party management UI for the RPG game.
 import pygame
 from constants import (BLACK, WHITE, GREEN, RED, GRAY, BLUE, YELLOW, PURPLE,
                       ORIGINAL_WIDTH, ORIGINAL_HEIGHT, DIALOGUE)
-from utils import scale_position, scale_dimensions, scale_font_size
-from systems.character_creator import CharacterCreator
+from utils.utils import scale_position, scale_dimensions, scale_font_size
+from systems.character.character_creator import CharacterCreator
 from entities.player import Player
 
 class PartyManagementUI:

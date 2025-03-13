@@ -5,8 +5,8 @@ import pygame
 import random
 from entities.entity import Entity
 from constants import RED, ORIGINAL_WIDTH, ORIGINAL_HEIGHT
-from utils import scale_position, scale_dimensions
-from systems.passive_system import PassiveSet
+from utils.utils import scale_position, scale_dimensions
+from systems.abilities.passive_system import PassiveSet
 
 class Enemy(Entity):
     """

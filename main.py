@@ -14,22 +14,22 @@ from constants import (
     DISPLAY_WINDOWED, DISPLAY_BORDERLESS, DISPLAY_FULLSCREEN
 )
 from data.encounter_pools import initialize_encounter_pools
-from map_initialization import initialize_maps
+from core.map_initialization import initialize_maps
 from game_states import GameStateManager
 from entities.player import Player
 from entities.enemy import Enemy
 from entities.party_recruiter import PartyRecruiter
-from systems.battle_system import BattleSystem
-from systems.battle_ui_helpers import draw_enemy_name_tags, draw_enemy_health_bars, draw_turn_order_indicator
-from systems.battle_visualizer import draw_battle_background, BattleVisualizer
-from systems.targeting_system import TargetingSystem
-from systems.inventory import get_item_effect
-from systems.map_system import MapSystem, MapArea
-from systems.dialogue_system import DialogueSystem
+from systems.battle.battle_system import BattleSystem
+from systems.battle.battle_ui_helpers import draw_enemy_name_tags, draw_enemy_health_bars, draw_turn_order_indicator
+from systems.battle.battle_visualizer import draw_battle_background, BattleVisualizer
+from systems.battle.battle_targeting import TargetingSystem
+from systems.inventory.inventory import get_item_effect
+from systems.map.map_system import MapSystem, MapArea
+from systems.ui.dialogue_system import DialogueSystem
 from systems.settings_manager import SettingsManager
-from game_initialization import initialize_party, create_party_recruiter
-import utils
-from utils import scale_position, scale_dimensions, scale_font_size
+from core.game_initialization import initialize_party, create_party_recruiter
+import utils.utils as utils
+from utils.utils import scale_position, scale_dimensions, scale_font_size
 
 def apply_display_settings(settings_manager, map_system=None):
     """

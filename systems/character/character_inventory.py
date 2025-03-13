@@ -1,7 +1,7 @@
 """
 Individual character inventory and party storage system for the RPG game.
 """
-from systems.inventory import Inventory, Item, get_item_effect
+from systems.inventory.inventory import Inventory, Item, get_item_effect
 
 class CharacterInventory(Inventory):
     """

@@ -1,8 +1,8 @@
 """
 Game initialization functions for the RPG game.
 """
-from systems.party_system import Party
-from systems.character_creator import CharacterCreator
+from systems.character.party_system import Party
+from systems.character.character_creator import CharacterCreator
 from entities.party_recruiter import PartyRecruiter
 from data.character_classes import commoner, warrior, mage
 from constants import ORIGINAL_WIDTH, ORIGINAL_HEIGHT

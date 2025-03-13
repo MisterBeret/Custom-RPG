@@ -1,7 +1,7 @@
 """
 Predefined encounter pools for the RPG game.
 """
-from systems.encounter_system import EncounterPool, EnemySpec, EncounterManager
+from systems.map.encounter_system import EncounterPool, EnemySpec, EncounterManager
 
 def initialize_encounter_pools():
     """

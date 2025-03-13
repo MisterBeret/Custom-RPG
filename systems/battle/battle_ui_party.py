@@ -7,7 +7,7 @@ import os
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from constants import (WHITE, GREEN, RED, GRAY, BLUE, DARK_BLUE, SCREEN_WIDTH, SCREEN_HEIGHT, 
                       ORIGINAL_WIDTH, ORIGINAL_HEIGHT, ORANGE, YELLOW)
-from utils import scale_position, scale_dimensions, scale_font_size
+from utils.utils import scale_position, scale_dimensions, scale_font_size
 
 def draw_party_status(screen, party, turn_order, font, small_font):
     """
